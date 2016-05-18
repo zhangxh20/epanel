@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx">
+	<fx:Declarations>
+		<s:RemoteObject id="asRemote" destination="authService" fault="onFault(event)">
+			<s:method name="getAuthXML" result="getAuthXMLResult(event)"/>
+			<s:method name="updateRoleAuths" result="updateRoleAuthsResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			private var xmlTreeList:XMLList = new XMLList(<a></a>);
+			[Bindable]
+			public var ugViewStack:UserGroupViewStack;
+			private var userGroupId:int;
+			
+			public function refresh():void{
+				userGroupId = HashTableManager.instance.get("userGroupRoleId") as int;
+				asRemote.getAuthXML(userGroupId);
+			}
+			
+			private function getAuthXMLResult(event:ResultEvent):void{
+				var str:String = event.result as String;
+				var xml:XML = new XML(str);
+				xmlTreeList = new XMLList(xml);
+			}
+			/**
+			 * 为用户组添加权限
+			 */ 
+			private function addRoles():void{
+				asRemote.updateRoleAuths(userGroupId,tree.dataProvider.toString());
+			}
+			private function updateRoleAuthsResult(event:ResultEvent):void{
+				var str:int = int(event.result);
+				if(str == 1){
+					cancel();
+//					Alert.show("添加成功！","提示");				
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));				
+				}else{
+//					Alert.show("添加失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00015"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function cancel():void{
+				ugViewStack.selectedChild = ugViewStack.nav1;
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);	
+				}
+			}
+		]]>
+	</fx:Script>
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		.tree{
+			defaultLeafIcon:ClassReference(null);
+			folderClosedIcon:ClassReference(null);
+			folderOpenIcon:ClassReference(null);
+		}
+	</fx:Style>
+	
+	<s:Group left="10" right="10" bottom="10">
+		<s:Label height="15" text="{ResourceManager.getInstance().getString('ViewerStrings','T00292')}" color="yellow" x="0"/>
+		<mx:Tree y="20" id="tree" width="100%" height="210" dataProvider="{xmlTreeList}" labelField="@name" 
+				 showRoot="false" itemRenderer="widgets.UserSetting.TreeItemRender" styleName="tree">
+		</mx:Tree>
+		<s:HGroup x="223" y="235" >
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="addRoles()"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="cancel()"/>
+		</s:HGroup>
+	</s:Group>
+</s:Group>

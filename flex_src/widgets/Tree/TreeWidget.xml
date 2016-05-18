@@ -1,0 +1,6 @@
+<?xml version="1.0" ?>
+<configuration label="Tree">
+    <!-- 单位ID -->
+	<company>1</company>
+	<timeOut>60</timeOut>
+</configuration>

@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" creationComplete="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject destination="roleService" id="rsRemote" fault="onFault(event)">
+			<s:method name="addRole" result="addRoleResult(event)"/>
+			<s:method name="getRoleById" result="getRoleByIdResult(event)"/>
+			<s:method name="modifyRole" result="modifyRoleResult(event)"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1" property="text" required="true" source="{name1}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.entitys.RoleInfo;
+			import com.gokei.managers.HashTableManager;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			public var ugViewStack:UserGroupViewStack;
+			private var validerror:Array;
+			private var i :int;
+			private var role:RoleInfo;
+			
+			private function init():void{
+				role = new RoleInfo();
+				validerror = new Array();
+				validerror.push(v1);
+			}
+			
+			private function addRoleResult(event:ResultEvent):void{
+				i = event.result as int;
+				if(i == -1){
+//					Alert.show("用户组名称已被占用");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00082"));
+					return ;
+				}else if(i == 1){
+					cancel();
+					ugViewStack.allUserGroup.init();
+					var obj : Object = { arr : [EventType.REFRESH_ID[15],EventType.REFRESH_ID[19]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("操作成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					cancel();
+//					Alert.show("操作失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			private function getRoleByIdResult(event:ResultEvent):void{
+				var _role:Object = event.result as Object;
+				name1.text = _role.name;
+				remark.text = _role.remark;
+			}
+			
+			private function modifyRoleResult(event:ResultEvent):void{
+				var i:int = event.result as int;	
+				if(i == 1){
+					ugViewStack.allUserGroup.init();
+					if(this.currentState == 'edit'){
+						cancel();
+					}
+					var obj : Object = { arr : [EventType.REFRESH_ID[15],EventType.REFRESH_ID[19]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("操作成功！","提示");				
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));				
+				}else{
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			/**
+			 * 新增用户组
+			 * */
+			private function addUserGroup():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;
+				if(validForm){
+					role.name = name1.text;
+					role.remark = remark.text;
+					rsRemote.addRole(role);
+				}
+			}
+			
+			/**
+			 * 编辑用户组
+			 * */
+			private function editUserGroup():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;
+				if(validForm){
+					role.id = HashTableManager.instance.get("userGroupId") as int;
+					role.name = name1.text;
+					role.remark = remark.text;
+					rsRemote.modifyRole(role);
+				}
+			}
+			
+			private function cancel():void{
+				name1.text = "";
+				remark.text = "";
+				name1.errorString = "";
+				ugViewStack.selectedChild = ugViewStack.nav1;
+			}
+			/**
+			 * 通过用户组ID获取用户组
+			 * */
+			public function getUserGroupById(userGroupId:int):void{
+				rsRemote.getRoleById(userGroupId);
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:states>
+		<s:State name="add"/>
+		<s:State name="edit"/>
+	</s:states>
+	
+	<s:Label id="label" color="yellow" x="10"/>
+	<s:Group left="180" top="50" right="10" bottom="10" >
+		<s:Form textAlign="right">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00293')}" required="true" requiredIndicatorSource="assets/images/require.png">
+				<s:TextInput id="name1" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}">
+				<s:TextInput id="remark" width="150" textAlign="left" maxChars="200"/>
+			</s:FormItem>
+		</s:Form>
+		<s:FormItem x="70" y="120">
+			<s:layout>
+				<s:HorizontalLayout/>
+			</s:layout>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00214')}" click.add="addUserGroup()" click.edit="editUserGroup()"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="cancel()"/>
+		</s:FormItem>
+	</s:Group>
+</s:Group>

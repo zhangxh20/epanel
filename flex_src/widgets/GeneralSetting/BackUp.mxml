@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" close="closeWindow();"
+			   width="350" height="200" title="{ResourceManager.getInstance().getString('ViewerStrings','T00190')}" initialize="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="bcRemote" destination="dbBackupService" fault="onFault(event)">
+			<s:method name="config"/>
+			<s:method name="getConfiguration" result="getConfigurationResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.MoveEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			
+//			private var array : ArrayCollection = new ArrayCollection([{value: 0 ,name:"星期日"},{value: 1 ,name:"星期一"},{value: 2 ,name:"星期二"},
+//				{value: 3 ,name:"星期三"},{value: 4 ,name:"星期四"},
+//				{value: 5 ,name:"星期五"},{value: 6 ,name:"星期六"}
+			[Bindable]
+			private var array : ArrayCollection = new ArrayCollection([{value: 0 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001910")},{value: 1 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001911")},{value: 2 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001912")},
+				{value: 3 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001913")},{value: 4 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001914")},
+				{value: 5 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001915")},{value: 6 ,name:ResourceManager.getInstance().getString("ViewerStrings","T001916")}
+			]);
+			
+			private function init():void{
+				this.addEventListener(MoveEvent.MOVE,window_moveHandler);
+			}
+			private function window_moveHandler(event:MoveEvent):void
+			{
+				var window:TitleWindow = event.currentTarget as TitleWindow;
+				
+				var bounds:Rectangle = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);//舞台的宽高
+				var windowBounds:Rectangle = window.getBounds(stage);//窗口的宽高
+				var x:Number;
+				var y:Number;
+				if (windowBounds.left <= bounds.left)
+					x = bounds.left;
+				else if (windowBounds.right >= bounds.right)
+					x = bounds.right - window.width;
+				else
+					x = window.x;
+				if (windowBounds.top <= bounds.top+45)
+					y = bounds.top+45;
+				else if (windowBounds.bottom >= bounds.bottom)
+					y = bounds.bottom - window.height;
+				else
+					y = window.y;
+				window.move(x, y);
+			}
+			private var once : Boolean = false ; // 是否只备份一次
+			
+			private var firstTime : Number ; // 第一次备份的时间
+			
+			private var period : Number ; //从当前时间算起， 到下一次执行备份的时间 ，一共间隔多长。
+			
+			private var remRepWarning : Boolean = false;
+			
+			private var remFinWorkSheet : Boolean = false;
+			/**
+			 * 确定备份
+			 * 一天 86400秒
+			 * */
+			private function makeBackUp():void{
+				// 获得系统当前时间
+				if (rb1.selected){
+					if (beginDay.text == ""){
+//						Alert.show("请选择备份日期。","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00087"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					once = true ;
+					if (beginDay.text != ""){
+						var date1 : Date = DateField.stringToDate(beginDay.text,"YYYY-MM-DD") ;
+					}
+					if (date1){
+						date1.hours = beginHour.value ;
+					}
+					firstTime = date1.time ;
+					period = 0;
+				}
+				if (rb2.selected){
+					if (beginDay.text == ""){
+//						Alert.show("请选择备份日期。","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00087"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					once = false ;
+					if (beginDay.text != ""){
+						var date2 : Date = DateField.stringToDate(beginDay.text,"YYYY-MM-DD") ;
+					}
+					if (date2){
+						date2.hours = beginHour.value ;
+					}
+					firstTime = date2.time ;
+					period = 86400 ;
+				}
+				if (rb3.selected){
+					if (selectDay.selectedItem == null){
+//						Alert.show("请选择备份日期。","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00087"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					once = false ;
+					//7天备份一次
+					period = 86400 * 7;
+					if(selectDay.selectedItem){
+						var day : Number = selectDay.selectedItem.value;
+						var hour : Number = endHour.value ;
+						var temp : Number = CommonUtil.getFirstTime(day,hour); //现在时间 距离 选择的时间 差
+						var dateF : Date = new Date(temp + new Date().time);
+						firstTime = dateF.time;
+					}
+				}
+				remRepWarning = ck1.selected ? true : false;
+				remFinWorkSheet = ck2.selected ? true : false ;
+				if(remRepWarning || remFinWorkSheet ){
+//					var alertStr : String = "确定删除";
+					var alertStr : String = ResourceManager.getInstance().getString("ViewerStrings","I00069");
+					if (remRepWarning){
+//						alertStr += "，已修复的告警";
+						alertStr += ResourceManager.getInstance().getString("ViewerStrings","I00088");
+					}
+					if (remFinWorkSheet){
+//						alertStr += "，已完成的工作单";
+						alertStr += ResourceManager.getInstance().getString("ViewerStrings","I00089");
+					}
+//					alertStr += "吗";
+					alertStr += ResourceManager.getInstance().getString("ViewerStrings","I00090");
+//					Alert.show(alertStr,"提示",Alert.YES|Alert.NO,
+					Alert.show(alertStr,ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.YES|Alert.NO,
+						null,
+						function(event:CloseEvent):void{
+							if (event.detail == Alert.YES){
+								bcRemote.config(once,firstTime,period,remRepWarning,remFinWorkSheet);
+//								Alert.show("成功设置备份!","提示");
+								Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00091"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+								closeWindow();
+							} 
+						});
+				} else {
+					closeWindow();
+					bcRemote.config(once,firstTime,period,remRepWarning,remFinWorkSheet);
+//					Alert.show("成功设置备份!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00091"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function closeWindow():void{
+				PopUpManager.removePopUp(this);
+			}
+			
+			private function getConfigurationResult(event:ResultEvent):void{
+				var obj : Object = event.result as Object;
+				var removeAlarm : int = obj.removeWarningAfterBackup;
+				if (removeAlarm == 1){
+					ck1.selected = true;
+				} else {
+					ck1.selected = false;
+				}
+				var removeWS : int = obj.removeWSAfterBackup;
+				if (removeWS == 1){
+					ck2.selected = true;
+				} else {
+					ck2.selected = false;
+				}
+				
+				var once : int = obj.once ; //是否是一次 1： true 0 ：false
+				var firstTime : Number = obj.firstTime; //第一次执行的时间
+				var intervalTime : Number = obj.intervalTime; //间隔多久
+				
+				if (once == 1 && intervalTime == 0){
+					//次
+					rb1.selected = true;
+					beginDay.text = DateField.dateToString(new Date(firstTime),"YYYY-MM-DD");
+					beginHour.value =  new Date(firstTime).hours;	
+				} else if (once == 0 && intervalTime == 86400){
+					//天
+					this.currentState = 'state2';
+					rb2.selected = true;
+					beginDay.text = DateField.dateToString(new Date(firstTime),"YYYY-MM-DD");
+					beginHour.value =  new Date(firstTime).hours;
+				} else {
+					//周
+					this.currentState = 'state3';
+					rb3.selected = true;
+					var dayNum : Number = new Date(firstTime).day;
+					selectDay.selectedIndex = dayNum;
+					endHour.value = new Date(firstTime).hours;
+				}
+			}
+			
+			private function checkValueFunction(value:Number):String{
+				var reg : RegExp = /[0-9]/;
+				if (reg.test(value.toString())){
+					return value.toString();
+				}else {
+					return "0";
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+		
+		
+	</fx:Script>
+	
+	<s:states>
+		<s:State name="state1"/>
+		<s:State name="state2"/>
+		<s:State name="state3"/>
+	</s:states>
+	
+	<s:VGroup width="60" height="168" verticalAlign="middle" horizontalAlign="center">
+		<s:RadioButton id="rb1" label="{ResourceManager.getInstance().getString('ViewerStrings','T00192')}" click="this.currentState='state1'" selected="true"/>
+		<s:RadioButton id="rb2" label="{ResourceManager.getInstance().getString('ViewerStrings','T00193')}" click="this.currentState='state2'"/>
+		<s:RadioButton id="rb3" label="{ResourceManager.getInstance().getString('ViewerStrings','T00194')}" click="this.currentState='state3'"/>
+	</s:VGroup>
+	
+	<s:Line x="60" y="0" yFrom="0" yTo="168" >
+		<s:stroke>
+			<s:SolidColorStroke color="0x000000" weight="1" caps="square"/>
+		</s:stroke>
+	</s:Line>
+	
+	<s:Group x="80" y="10">
+		<s:layout>
+			<s:HorizontalLayout/>
+		</s:layout>
+		<s:CheckBox id="ck1" label="{ResourceManager.getInstance().getString('ViewerStrings','T00195')}"/>
+		<s:CheckBox id="ck2" label="{ResourceManager.getInstance().getString('ViewerStrings','T00196')}"/>
+	</s:Group>
+	
+	<s:Line x="1" y="35" xFrom="60" xTo="346">
+		<s:stroke>
+			<s:SolidColorStroke color="0x000000" weight="1" caps="square"/>
+		</s:stroke>
+	</s:Line>
+	
+	<s:Group x="60" y.state1="50" y.state2="50" includeIn="state1,state2">
+		<s:Form>
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00197')}">
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<mx:DateField id="beginDay" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+				<s:NumericStepper id="beginHour" maximum="23" valueFormatFunction="checkValueFunction"/>
+				<s:Label height="100%" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}" verticalAlign="middle" fontWeight="bold"/>
+			</s:FormItem>
+		</s:Form>
+	</s:Group>
+	
+	
+	<s:Group x="60" y="30" width="100%" height="60%" includeIn="state3">
+		<s:VGroup width="100%" height="90%">
+			<s:HGroup width="100%" height="100%" verticalAlign="middle" horizontalAlign="center">
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00198')}"/>
+				<s:DropDownList id="selectDay" dataProvider="{array}" labelField="name"/>
+				<s:NumericStepper id="endHour" maximum="23"/>
+				<s:Label height="100%" text="时" verticalAlign="middle" fontWeight="bold"/>
+			</s:HGroup>
+		</s:VGroup>
+	</s:Group>
+	
+	<s:HGroup x="60" y="140" horizontalAlign="right" verticalAlign="bottom" width="260">
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="makeBackUp()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="closeWindow()"/>
+	</s:HGroup>
+
+</s:TitleWindow>

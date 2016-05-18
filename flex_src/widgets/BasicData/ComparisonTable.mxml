@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx" width="300" height="500"  title="{ResourceManager.getInstance().getString('ViewerStrings','T00018')}"
+			   xmlns:gokei="com.gokei.components.*" 
+			   close="cancel()">
+	<fx:Declarations>
+		<s:RemoteObject id="ssRemote" destination="spotService" fault="onFault(event)">
+			<s:method name="spotPortsContrast" result="spotPortsContrastResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			private var _fileData:ByteArray;
+			private var _areaId:int;
+			
+			public function init():void{
+				a.selected = true;
+				ssRemote.spotPortsContrast(_fileData,_areaId);
+			}
+			
+			public function set fileDate(value:ByteArray):void{
+				this._fileData = value;
+			}
+			public function set areaId(value:int):void{
+				this._areaId = value;
+			}
+			protected function rb_changeHandler(event:Event):void{
+				switch(event.currentTarget.selectedValue)
+				{
+					case "a":
+						vStack.selectedChild = cav1;
+						break;
+					case "b":
+						vStack.selectedChild = cav2;
+						break;	
+					default:
+						break;
+				}
+			}
+			
+			[Bindable]
+			private var exlspotCodes:ArrayCollection;
+			[Bindable]
+			private var allHave:ArrayCollection;
+			[Bindable]
+			private var dbOnly:ArrayCollection; 
+			
+			protected function spotPortsContrastResult(event:ResultEvent):void{
+				var array:Array = event.result as Array;
+				if(array == null){
+					PopUpManager.removePopUp(this);
+//					Alert.show("您上传的文件格式不正确！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00089"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				exlspotCodes = toLabelArray(array[0]);
+				allHave = toLabelArray(array[1]);
+				dbOnly = toLabelArray(array[2]);
+			}
+			private function toLabelArray(list:ArrayCollection):ArrayCollection {
+				var labelList:ArrayCollection = new ArrayCollection();
+				var obj:Object;
+				for (var i:int = 0; i < list.length; i ++) {
+					obj = new Object();
+					obj.no = i+1;
+					obj.code = list.getItemAt(i);
+					labelList.addItem(obj);
+				}
+				return labelList;
+			}
+			
+			private function cancel():void{
+				PopUpManager.removePopUp(this);
+				a.selected=true;
+				vStack.selectedChild = cav1
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<s:RadioButtonGroup id="rb" change="rb_changeHandler(event)"/>
+	</fx:Declarations>
+	
+	<s:Group left="5" right="5" top="5" bottom="5" width="100%" height="100%">
+		<s:HGroup>
+			<s:RadioButton id="a" value="a" label="{ResourceManager.getInstance().getString('ViewerStrings','T00019')}" groupName="rb"/>
+			<s:RadioButton id="b" value="b" label="{ResourceManager.getInstance().getString('ViewerStrings','T00020')}" groupName="rb"/>
+		</s:HGroup>
+		<s:Rect width="100%" height="435" y="22">
+			<s:stroke>
+				<s:SolidColorStroke color="black"/>
+			</s:stroke>
+		</s:Rect>
+		
+		<mx:ViewStack id="vStack" width="100%" height="235" y="22">
+			<s:NavigatorContent id="cav1" width="100%" height="100%">
+				<s:DataGrid dataProvider="{allHave}" width="100%" height="400" horizontalScrollPolicy="off">
+					<s:columns>
+						<s:ArrayCollection>
+							<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00021')}" width="50" dataField="no"/>
+							<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00022')}" dataField="code"/>
+						</s:ArrayCollection>
+					</s:columns>
+				</s:DataGrid>
+				<s:Button label="取消" x="200" y="407" click="cancel()"/>
+			</s:NavigatorContent>
+			<s:NavigatorContent id="cav2" width="100%" height="200">
+				<s:DataGrid dataProvider="{dbOnly}" width="50%" height="400" horizontalScrollPolicy="off">
+					<s:columns>
+						<s:ArrayCollection>
+							<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00021')}" width="50" dataField="no"/>
+							<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00023')}" dataField="code"/>
+						</s:ArrayCollection>
+					</s:columns>
+				</s:DataGrid>
+				<s:DataGrid dataProvider="{exlspotCodes}" width="50%" x="143" height="400" horizontalScrollPolicy="off">
+					<s:columns>
+						<s:ArrayCollection>
+							<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00021')}" width="50" dataField="no"/>
+							<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00024')}" dataField="code"/>
+						</s:ArrayCollection>
+					</s:columns>
+				</s:DataGrid>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" x="200" y="407" click="cancel()"/>
+			</s:NavigatorContent>
+		</mx:ViewStack>     
+	</s:Group>
+	
+</gokei:TitleWindowX>

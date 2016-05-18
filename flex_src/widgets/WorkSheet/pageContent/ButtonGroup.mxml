@@ -1,0 +1,331 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:gokei="widgets.WiringSheet.*" initialize="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="wssRemote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="sendWorkSheet" result="sendWorkSheetResult(event)"/>
+			<s:method name="deleteCreatedWorkSheet" result="deleteCreatedWorkSheetResult(event)"/>
+			<s:method name="deleteUnfinishedWorkSheet" result="deleteUnfinishedWorkSheetResult(event)"/>
+			<s:method name="excuteWorkSheet" result="excuteWorkSheetResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.resources.ResourceManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			import widgets.WorkSheet.WorkSheetWidget;
+			[Bindable]
+			public var wsw:WorkSheetWidget;
+			private var idArr:Array;
+			private var file:FileReference = new FileReference();
+			
+			public var cabinetIds : ArrayCollection ;
+			
+			private function init():void{
+				file.addEventListener(IOErrorEvent.IO_ERROR,errorFunc);
+				file.addEventListener(Event.COMPLETE,downloadFileComp);
+			}
+			
+			private function errorFunc(event : IOErrorEvent):void{
+//				Alert.show("文件下载失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00087"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+			}
+			
+			private function downloadFileComp(event : Event):void{
+//				Alert.show("成功下载","提示"); 
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00011"),ResourceManager.getInstance().getString("ViewerStrings","T00001")); 
+			}
+			/**
+			 * 发送工作单
+			 * */
+			private function sendWorkSheet():void{
+				var array:Array = wsw.grid1.dataGrid.getSelectedItem();
+				cabinetIds = new ArrayCollection();
+				idArr = new Array;
+				for(var i:int = 0;i<array.length;i++){
+					idArr.push(array[i].id);
+					if(!cabinetIds.contains(array[i].port1Cabinet.id)){
+						cabinetIds.addItem(array[i].port1Cabinet.id);
+					}
+					if(!cabinetIds.contains(array[i].port2Cabinet.id)){
+						cabinetIds.addItem(array[i].port2Cabinet.id);
+					}
+				}
+				if(array.length == 0){
+//					Alert.show("请选择您要发送的工作单！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00140"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				wssRemote.sendWorkSheet(idArr);
+			}
+			
+			private function sendWorkSheetResult(event:ResultEvent):void{
+				wsw.grid1.judgeRemote(0);
+				wsw.grid1.checkBoxColunm.cloumsSelected = false;
+				if (wsw.checkPageToPage1 == true){//grid2没有初始化 限定刷新gird2的触发点
+					//刷新未完成工作单界面
+					setTimeout(function():void {
+						wsw.grid2.judgeRemote(1);
+					},1000);
+					
+				}
+				//刷新worksheet wiringSheet 工单数量
+				AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+				//刷新机柜图
+				if (wsw.butGroup1.checkBox.selected == true) {
+					//刷新机柜
+					AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+				}
+			}
+			
+			/**
+			 * 删除已生成的工作单（制单界面）
+			 * */
+			private function delCreatedWorkSheet():void{
+				var array:Array = wsw.grid1.dataGrid.getSelectedItem();
+				cabinetIds = new ArrayCollection();
+				idArr = new Array;
+				for(var i:int = 0;i<array.length;i++){
+					idArr.push(array[i].id);
+					if(!cabinetIds.contains(array[i].port1Cabinet.id)){
+						cabinetIds.addItem(array[i].port1Cabinet.id);
+					}
+					if(!cabinetIds.contains(array[i].port2Cabinet.id)){
+						cabinetIds.addItem(array[i].port2Cabinet.id);
+					}
+				}
+				if(array.length == 0){
+//					Alert.show("请选择您要删除的工作单！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00141"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+//				Alert.show("您确定要删除吗?",
+//					"提示",
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+					Alert.YES|Alert.NO,
+					null,
+					judgeDel);
+				array.length = 0;
+			}
+			private function judgeDel(event:CloseEvent):void{
+				if(event.detail == Alert.YES){
+					wssRemote.deleteCreatedWorkSheet(idArr);
+					wsw.grid1.checkBoxColunm.cloumsSelected = false;
+				}
+			}
+			
+			private function deleteCreatedWorkSheetResult(event:ResultEvent):void	{
+//				Alert.show("操作成功！");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"));
+				wsw.grid1.judgeRemote(0);
+				AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+				if(wsw.checkPageToPage4 == true){
+					//刷新历史界面
+					wsw.grid4.judgeRemote(3);
+				}
+				//刷新机柜图
+				if (wsw.butGroup1.checkBox.selected == true) {
+					//刷新机柜
+					AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+				}
+			}
+				
+			/**
+			 * 未完成界面 删除按钮 已完成和执行中的工作单不可删
+			 * */
+			private function delNoCompletedWorkSheet():void{
+				var array:Array = wsw.grid2.dataGrid.getSelectedItem();
+				cabinetIds = new ArrayCollection();
+				idArr = new Array();
+				for(var i:int=0;i<array.length;i++){
+					if(array[i].state != "3"){
+						//执行中的工作单
+//						Alert.show("只能删除已受理的工作单","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00142"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}else{
+						idArr.push(array[i].id);
+						if(!cabinetIds.contains(array[i].port1Cabinet.id)){
+							cabinetIds.addItem(array[i].port1Cabinet.id);
+						}
+						if(!cabinetIds.contains(array[i].port2Cabinet.id)){
+							cabinetIds.addItem(array[i].port2Cabinet.id);
+						}
+					}
+				}
+				if(array.length == 0){
+//					Alert.show("请选择您要删除的工作单","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00141"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+//				Alert.show("您确定要删除吗?",
+//					"提示",
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+					Alert.YES|Alert.NO,
+					null,
+					delCompletedWorkSheet);
+				array.length = 0;
+			}
+			private function delCompletedWorkSheet(event:CloseEvent):void{
+				if(event.detail == Alert.YES){
+					wssRemote.deleteUnfinishedWorkSheet(idArr);
+					wsw.grid2.checkBoxColunm.cloumsSelected = false;
+				}
+			}
+			private function deleteUnfinishedWorkSheetResult(event:ResultEvent):void{
+//				Alert.show("操作成功！");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"));
+				wsw.grid2.judgeRemote(1);
+			}
+			
+			/**
+			 * 执行工作单  ,已受理状态 才能执行工作单
+			 * */
+			private function executeWorkSheet():void{
+				var array:Array = wsw.grid2.dataGrid.getSelectedItem();
+				cabinetIds = new ArrayCollection();
+				if (array.length > 1 || array.length == 0){
+//					Alert.show("请选择一条工作单执行！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00143"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				if(array[0].state != "3"){
+//					Alert.show("请选择已受理的工作单!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00144"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				var wsId:int = array[0].id;//删除数组中第一个元素 并返回
+				if(!cabinetIds.contains(array[0].port1Cabinet.id)){
+					cabinetIds.addItem(array[0].port1Cabinet.id);
+				}
+				if(!cabinetIds.contains(array[0].port2Cabinet.id)){
+					cabinetIds.addItem(array[0].port2Cabinet.id);
+				}
+				wssRemote.excuteWorkSheet(wsId);
+			}
+			
+			private function excuteWorkSheetResult(event:ResultEvent):void{
+				setTimeout(function ():void {
+					wsw.grid2.judgeRemote(1);
+				},1000);
+				wsw.grid2.checkBoxColunm.cloumsSelected = false;
+			}
+			
+			private function export(value:int):void{
+				if(value == 0){
+//					if (export1.label == "导出"){
+					if (export1.label == ResourceManager.getInstance().getString("ViewerStrings","I00012")){
+//						export1.label = "导出中...";
+						export1.label = ResourceManager.getInstance().getString("ViewerStrings","I00013");
+						export1.enabled = false;
+						wsw.grid1.exportInSystem(0);
+					}else{
+						file.download(new URLRequest(CommonUtil.getRootPath() + "/download/"+wsw.grid1.fileName),"WorkSheet.xlsx");
+					}
+				}else if(value == 1){
+					if (export2.label == ResourceManager.getInstance().getString("ViewerStrings","I00012")){
+						export2.label = ResourceManager.getInstance().getString("ViewerStrings","I00013");
+						export2.enabled = false;
+						wsw.grid2.exportInSystem(1);
+					}else{
+						file.download(new URLRequest(CommonUtil.getRootPath() + "/download/"+wsw.grid2.fileName),"WorkSheet.xlsx");
+					}
+				}else if(value == 2){
+					if (export3.label == ResourceManager.getInstance().getString("ViewerStrings","I00012")){
+						export3.label = ResourceManager.getInstance().getString("ViewerStrings","I00013");
+						export3.enabled = false;
+						wsw.grid3.exportInSystem(2);
+					}else{
+						file.download(new URLRequest(CommonUtil.getRootPath() + "/download/"+wsw.grid3.fileName),"WorkSheet.xlsx");
+					}
+				}else if(value == 3){
+					if (export4.label == ResourceManager.getInstance().getString("ViewerStrings","I00012")){
+						export4.label = ResourceManager.getInstance().getString("ViewerStrings","I00013");
+						export4.enabled = false;
+						wsw.grid4.exportInSystem(3);
+					}else{
+						file.download(new URLRequest(CommonUtil.getRootPath() + "/download/"+wsw.grid4.fileName),"WorkSheet.xlsx");
+					}
+				}
+			}
+			
+			private function linkCabinet():void{
+				if (!comboBox.selectedItem) return ;
+				if (this.currentState == "init"){
+					wsw.grid1.linkCabinet(comboBox.selectedItem.code);
+				} else if (this.currentState == "noCompleted") {
+					wsw.grid2.linkCabinet(comboBox.selectedItem.code);
+				} else if (this.currentState == 'completed') {
+					wsw.grid3.linkCabinet(comboBox.selectedItem.code);
+				} else {
+					wsw.grid4.linkCabinet(comboBox.selectedItem.code);
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:states>
+		<s:State name="init"/>
+		<s:State name="noCompleted"/>
+		<s:State name="completed"/>
+		<s:State name="history"/>
+	</s:states>
+
+	<s:HGroup>
+		<gokei:FilterComBox id="comboBox" height="22" width="100" dataProvider="{wsw.grid1.linkArray}" labelField="name"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00035')}" click="linkCabinet()"/>
+		<s:Button id="send" label="{ResourceManager.getInstance().getString('ViewerStrings','T00341')}" includeIn="init" visible="{wsw.sendAuth}" includeInLayout="{wsw.sendAuth}" click="sendWorkSheet()"/>
+		<s:Button id="delInit" label="{ResourceManager.getInstance().getString('ViewerStrings','T00052')}" includeIn="init" visible="{wsw.delInitAuth}" includeInLayout="{wsw.delInitAuth}" click="delCreatedWorkSheet()"/>
+		
+		<s:Button id="execute" label="{ResourceManager.getInstance().getString('ViewerStrings','T00342')}" includeIn="noCompleted" visible="{wsw.executeAuth}" includeInLayout="{wsw.executeAuth}" click="executeWorkSheet()"/>
+		<s:Button id="delNoCompleted" label="{ResourceManager.getInstance().getString('ViewerStrings','T00052')}" includeIn="noCompleted" visible="{wsw.delNoCompletedAuth}" 
+				  includeInLayout="{wsw.delNoCompletedAuth}" click="delNoCompletedWorkSheet()"/>
+		<s:Button id="export1" label="{ResourceManager.getInstance().getString('ViewerStrings','I00012')}" visible="{wsw.exportVisable1}" includeIn="init" click="export(0)" enabled="{wsw.grid1.recordCount == 0 ? false : true}"/>
+		<s:Button id="export2" label="{ResourceManager.getInstance().getString('ViewerStrings','I00012')}" visible="{wsw.exportVisable2}" includeInLayout="{wsw.exportVisable2}"  includeIn="noCompleted" click="export(1)" enabled="{wsw.grid2.recordCount == 0 ? false : true}"/>
+		<s:Button id="export3" label="{ResourceManager.getInstance().getString('ViewerStrings','I00012')}" visible="{wsw.exportVisable3}"  includeIn="completed" click="export(2)" enabled="{wsw.grid3.recordCount == 0 ? false : true}"/>
+		<s:Button id="export4" label="{ResourceManager.getInstance().getString('ViewerStrings','I00012')}" visible="{wsw.exportVisable4}"  includeIn="history" click="export(3)" enabled="{wsw.grid4.recordCount == 0 ? false : true}"/>
+		
+		<s:CheckBox id="checkBox" label="{ResourceManager.getInstance().getString('ViewerStrings','T00100')}" includeIn="init,noCompleted"/>
+	</s:HGroup>
+</s:Group>

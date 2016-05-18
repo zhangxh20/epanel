@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" 
+		 xmlns:comp="com.gokei.components.*"
+		 xmlns:gokei="widgets.Tree.*" width="100%" height="100%" initialize="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="getSpaceGraphXMLByCompanyId" result="loadTree(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="roomRemote" destination="roomService" fault="onFault(event)">
+			<s:method name="deleteRoomById" result="delResult(event)"/>
+		</s:RemoteObject>
+		<s:Resize id="expandEffect1" target="{treeWidget.wTemplate}" widthTo="{treeWidget.wTemplate.width + 500}"/>
+		<s:Resize id="expandEffect2" target="{treeWidget.wTemplate}" widthTo="{treeWidget.wTemplate.width - 500}"/>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.events.TreeEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			public var companyId : int;
+			[Bindable]
+			public var treeWidget : TreeWidget;
+			[Bindable]
+			private var xmlList : XMLList ;
+			public var xml : XML;
+			private var roomGroup : AddRoom = new AddRoom();
+			public var btnSelected : Boolean ; //控制widget的拉伸
+			private var obj : Object; //添加房间需要的一些属性	
+			private var buildingId : int = -1;
+			private var areaId : int = -1;
+			private var roomId : int = -1;
+			
+			private function init():void{
+				remote.getSpaceGraphXMLByCompanyId(companyId,true);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event : AppEvent):void{
+				var data : Object = event.data.obj as Object;
+				if(data){
+					buildingId = data.buildingId;
+				}
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[9] == item){
+						remote.getSpaceGraphXMLByCompanyId(companyId,true);
+						loading.visible = true;
+						break ;
+					}
+				}
+			}
+			
+			private function iconfunc(item:Object):Class {
+				return CommonUtil.iconfunc(item);
+			}
+			private function labelFunc(item:Object):String{
+				return CommonUtil.labelfunc(item,'room');
+			}
+			
+			//点击树形图的三角箭头时 触发该事件
+			private function isItemClose(event:TreeEvent):void{
+				initBtn();
+			}
+			
+			private function loadTree(event:ResultEvent):void {
+				loading.visible = false;
+				var xmlStr : String = event.result as String;
+				xml = new XML(xmlStr);
+				xmlList  = new XMLList(xml);
+				trace(xmlList);
+				tree.callLater(function():void{
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+					
+					//添加 删除 修改 默认展开 空间树形图
+					var newXml : XMLList = xmlList[0].company[0].building;
+					for each (var buildItem : XML in newXml){
+						if(buildingId == buildItem.@ID){
+							tree.expandItem(buildItem,true);
+							for each (var areaItem : XML in buildItem.children()){
+								if(areaId == areaItem.@ID){
+									tree.expandItem(areaItem,true);
+									break ;
+								}
+							}
+						}
+					}
+					buildingId = -1;
+					areaId = -1;
+				});
+			}
+			
+			private function treeSelect(event:ListEvent):void {
+				if(tree.selectedItem == null) return;
+				var xml : XML = tree.selectedItem as XML;
+				obj = new Object();
+				initBtn();
+				roomGroup.roomTree = this;
+				if(xml.@type == 'area'){
+					addRoomBtn.enabled = true;
+					addRoomBtn.alpha = 1.0;
+					obj.type = xml.@type;
+					obj.areaId = xml.@ID;
+					obj.companyName = xml.parent().parent().@name;
+					obj.buildingName = xml.parent().@name;
+					obj.areaName = xml.@name;
+					//点击楼层 添加房间
+					buildingId = xml.parent().@ID;
+					areaId = xml.@ID;
+					roomGroup.currentState = 'add';
+					if(btnSelected){
+						roomGroup.cancel(1);
+					}
+				}else if(xml.@type == 'room'){
+					//点击房间 编辑页面
+					buildingId = xml.parent().parent().@ID;
+					areaId = xml.parent().@ID;
+					obj.type = xml.@type;
+					obj.roomId = roomId = xml.@ID;
+					obj.areaId = xml.parent().@ID;
+					obj.companyName = xml.parent().parent().parent().@name;
+					obj.buildingName = xml.parent().parent().@name;
+					obj.areaName = xml.parent().@name;
+					delRoomBtn.enabled = true;
+					delRoomBtn.alpha = 1.0;
+					editRoomBtn.enabled = true;
+					editRoomBtn.alpha = 1.0;
+					roomGroup.currentState = 'edit';
+				}else{
+					if(btnSelected){
+						removeAll();
+						btnSelected = false;
+					}
+				}
+				roomGroup.obj = obj;
+			}
+			
+			private function addRoom():void{	
+				expandWidget(addRoomBtn);
+				roomGroup.currentState = 'add';
+				roomGroup.cancel(1);
+			}
+			
+			private function editRoom():void{
+				expandWidget(editRoomBtn);
+				roomGroup.currentState = 'edit';
+				roomGroup.getRoom();
+			}
+			
+			private function expandWidget(btn : Button):void{
+				if(btnSelected == false){
+					expandEffect1.play();
+					btnSelected = true;
+				}
+				group.percentWidth = 50;
+				group2.percentWidth = 50;
+				group2.includeInLayout = true;
+				group2.addElement(roomGroup);
+				treeWidget.roomGroup1.percentWidth = 50;
+				treeWidget.roomGroup2.percentWidth = 50;
+				treeWidget.roomGroup2.includeInLayout = true;
+			}
+			
+			public function removeAll():void{
+				expandEffect2.play();
+				group2.removeAllElements();
+				group2.includeInLayout = false;
+				group.percentWidth = 100;
+				initBtn();
+				treeWidget.roomGroup1.percentWidth = 100;
+				treeWidget.roomGroup2.includeInLayout = false;
+			}
+			
+			private function initBtn():void{
+				addRoomBtn.enabled = false;
+				addRoomBtn.alpha = 0.2;
+				delRoomBtn.enabled = false;
+				delRoomBtn.alpha = 0.2;
+				editRoomBtn.enabled = false;
+				editRoomBtn.alpha = 0.2;
+			}
+			
+			//删除房间
+			public function delRoom():void{
+//				Alert.show("您确定要删除吗?",
+//					"提示",
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+					Alert.YES|Alert.NO,
+					null,
+					judgeDel);
+			}
+			
+			private function judgeDel(event:CloseEvent):void{
+				if(event.detail == Alert.YES){
+					roomRemote.deleteRoomById(roomId);
+				}
+			}
+			
+			private function delResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == 1){
+					var obj : Object = { arr : [EventType.REFRESH_ID[9],EventType.REFRESH_ID[12]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("删除成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00054"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					initBtn();
+					if(btnSelected){
+						removeAll();
+						btnSelected = false;
+					}
+				}else{
+//					Alert.show("删除失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00020"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:HGroup width="100%" height="100%">
+		<s:Group id="group" width="100%" height="100%">
+			<s:VGroup width="100%" height="100%">
+				<gokei:AutoSizeTree id="tree" dataProvider="{xmlList}" width="100%" height="96%" 
+									labelFunction="labelFunc" itemClick="treeSelect(event)" itemClose="isItemClose(event)"
+									showRoot="false" horizontalScrollPolicy="auto" iconFunction="iconfunc">
+				</gokei:AutoSizeTree>
+				
+				<s:HGroup width="100%" height="4%" horizontalAlign="right" verticalAlign="middle">
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00256')}">
+						<s:Button id="addRoomBtn" enabled="false" icon="{TreeImageList.addRoomIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2" click="addRoom()"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00257')}">
+						<s:Button id="editRoomBtn" enabled="false" icon="{TreeImageList.editRoomIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2" click="editRoom()"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00258')}">
+						<s:Button id="delRoomBtn" enabled="false" icon="{TreeImageList.delRoomIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2" click="delRoom()"/>
+					</s:HGroup>
+				</s:HGroup>
+			</s:VGroup>
+		</s:Group>
+		<s:Group id="group2" height="100%" includeInLayout="false"/>
+	</s:HGroup>
+	<comp:Loading id="loading" type="1" x="{(width - loading.width)/2}" y="{(height - loading.height)/2}" />
+</s:Group>

@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			  xmlns:s="library://ns.adobe.com/flex/spark" 
+			  xmlns:mx="library://ns.adobe.com/flex/mx" creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject  id="csRemote" destination="companyService" fault="onFault(event)">
+			<s:method name="getAllCompanies" result="getAllCompaniesResult(event)"/>
+			<s:method name="addCompany" result="addCompanyResult(event)"/>
+			<s:method name="modifyCompany" result="modifyCompanyResult(event)"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1" property="text" required="true" source="{companyName}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00062')}"/>
+		<mx:NumberValidator id="v2" property="text" required="true" source="{tel}" minValue="1" maxValue="999999999999" allowNegative="false"
+							invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			import widgets.BasicData.building.AllBuilding;
+			import widgets.BasicData.entitys.Company;
+			
+			private var companyArr:ArrayCollection;
+			private var validerror:Array;
+			private var company:Company = new Company();
+			private var allBuilding:AllBuilding;
+			
+			protected function init():void{
+				//处理关闭 打开 取消 初始化widgets信息
+				AppEvent.addListener(EventType.INIT_COMPANY_MESSAGE,initMessage);
+				allBuilding = new AllBuilding();
+				validerror = new Array();
+				validerror.push(v1);
+				validerror.push(v2);
+				AppEvent.dispatch(EventType.INIT_COMPANY_MESSAGE);
+			}
+			
+			private function initMessage(event : AppEvent):void{
+				csRemote.getAllCompanies();
+			}
+			
+			protected function getAllCompaniesResult(event:ResultEvent):void {
+				companyArr = event.result as ArrayCollection;
+				if(companyArr.length > 0){
+					//显示
+					var company:Object = companyArr.getItemAt(0);
+					HashTableManager.instance.put("companyId",companyArr.getItemAt(0).id);
+					companyName.text = company.name;
+					address.text = company.address;
+					contact.text = company.contact;
+					tel.text = company.tel;
+					remark.text = company.remark;
+				}	
+			}
+			protected function addCompanyResult(event:ResultEvent):void {
+				var i:int = event.result as int;
+				if(i == 1){
+//					Alert.show("操作成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					csRemote.getAllCompanies();
+					var obj : Object = { arr : [ EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],
+						EventType.REFRESH_ID[8],EventType.REFRESH_ID[9] ]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+				}else{
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			protected function modifyCompanyResult(event:ResultEvent):void {
+				var i:int = event.result as int;
+				if(i == 1){
+//					Alert.show("操作成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					var obj : Object = { arr : [ EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],
+						EventType.REFRESH_ID[8],EventType.REFRESH_ID[9] ]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+				}else{
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			protected function addOrModify(event:MouseEvent):void {	
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;
+				if(validForm){
+					company.name = companyName.text;
+					company.address = address.text;
+					company.contact = contact.text;
+					company.tel = tel.text;
+					company.remark = remark.text;
+					if(companyArr.length == 0){
+						//做添加
+						csRemote.addCompany(company);
+					}else{
+						//做修改
+						company.id = (companyArr.getItemAt(0) as Company).id;
+						csRemote.modifyCompany(company);
+					}
+				}
+			}	
+			private function cancel():void{ 
+				AppEvent.dispatch(AppEvent.WIDGET_CLOSE,10);
+				setTimeout(function():void{AppEvent.dispatch(EventType.INIT_COMPANY_MESSAGE);},1000);
+				companyName.errorString = "";
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:Group top="10" left="10" right="10" bottom="10">
+		<s:Form textAlign="right">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','C00004')}" required="true" height="30" requiredIndicatorSource="assets/images/require.png">
+				<s:TextInput id="companyName" textAlign="left" width="150" maxChars="50"/>
+			</s:FormItem>
+				
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00057')}" height="30">
+				<s:TextInput id="address" textAlign="left" width="150" maxChars="50"/>
+			</s:FormItem>
+				
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00058')}" height="30">
+				<s:TextInput id="contact" textAlign="left" width="150" maxChars="50"/>
+			</s:FormItem>
+				
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00059')}" height="30">
+				<s:TextInput id="tel" textAlign="left" width="150" maxChars="50"/>
+			</s:FormItem>
+				
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" height="30">
+				<s:TextInput id="remark" textAlign="left" width="150" maxChars="200"/>
+			</s:FormItem>
+				
+			<s:FormItem>
+				<s:layout>
+					<s:HorizontalLayout paddingLeft="-20"/>
+				</s:layout>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="addOrModify(event)"/>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+			</s:FormItem>
+		</s:Form>	
+	</s:Group>
+
+</s:Group>

@@ -1,0 +1,324 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 登陆画面
+//
+// @Author zhang
+// @Version v1.0
+// @Date 2012-09
+///////////////////////////////////////////////////////////////////////////
+-->
+<s:Form xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" width="516" height="271"
+			   creationComplete="init()" tabFocusEnabled="true" skinClass="com.gokei.components.LoginSkin" initialize="loadConfig()">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+		<s:RemoteObject id="remote" destination="loginService" fault="onfault(event)">
+			<s:method name="login" result="loginResult(event)" />
+			<s:method name="reload" result="reloadResult(event)" />
+			<s:method name="logoutx" result="logoutResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="wsRemote" destination="workSheetService" fault="onfault(event)">
+			<s:method name="getWireSheetCount" result="wireResult(event)" />
+			<s:method name="getWorkSheetCount" result="workResult(event)" />
+		</s:RemoteObject>
+		<s:RemoteObject id="alRemote" destination="warningService" fault="onfault(event)">
+			<s:method name="getWarningInWarningCount" result="alarmResult(event)" />
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.entitys.UserInfo;
+			import com.gokei.managers.MD5;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.controls.Alert;
+			import mx.events.MoveEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.rpc.http.HTTPService;
+			
+			private static const VIEWER_STRINGS:String = "ViewerStrings";
+			
+			private var strCode:String;
+			
+			public var logout:Boolean = false;
+			
+			private var user:UserInfo;
+			
+			private var configWiring:XML;
+			
+			private var configWork:XML;
+			
+			private static const WIRING_SHEET:String = "widgets/WiringSheet/WiringSheetWidget.xml";
+			
+			private static const WORK_SHEET:String = "widgets/WorkSheet/WorkSheetWidget.xml";
+			
+			private function init():void {
+				showCode();
+				addEventListener(MoveEvent.MOVE,window_moveHandler);
+				addEventListener(KeyboardEvent.KEY_DOWN,keyDownHandle);
+				loadConfig();
+				//用户名可直接输入
+				focusManager.setFocus(userName);
+				ExternalInterface.call("document.getElementById('ePanel').focus()");
+			}
+			
+			private function wringWorkNum(event:AppEvent):void {
+				var flag:String = "";
+				var xml:XML;
+				var i:int;
+				for each(xml in configWiring.buttons.button) {
+					//如果当前操作者 有查看自己配线单的权限
+					
+					if(xml.@name == "queryOwnWireSheet"){
+						for(i = 0;i<user.roleInfo.authIdList.length;i++){
+							if(xml.@id == user.roleInfo.authIdList.getItemAt(i)){
+								flag = "false";
+								break ;
+							}
+						}
+					}
+					
+					//如果当前操作者 有查看所有配线单的权限
+					if(xml.@name == "queryWireSheet"){
+						for(i = 0;i<user.roleInfo.authIdList.length;i++){
+							if(xml.@id == user.roleInfo.authIdList.getItemAt(i)){
+								flag = "true";
+								break ;
+							}
+						}
+					}
+				}
+				if (flag == "true") {
+					wsRemote.getWireSheetCount(true);
+				} else if (flag == "false") {
+					wsRemote.getWireSheetCount(false);
+				}
+				//----------------------
+				flag = "";
+				for each(xml in configWork.buttons.button) {
+					//如果当前操作者 有查看自己工作单的权限
+					if(xml.@name == "queryOwnWorkSheet"){
+						for(i = 0;i<user.roleInfo.authIdList.length;i++){
+							if(xml.@id == user.roleInfo.authIdList.getItemAt(i)){
+								flag = "false";
+								break ;
+							}
+						}
+					}
+					
+					//如果当前操作者 有查看所有工作单的权限
+					if(xml.@name == "queryWorkSheet"){
+						for(i = 0;i<user.roleInfo.authIdList.length;i++){
+							if(xml.@id == user.roleInfo.authIdList.getItemAt(i)){
+								flag = "true";
+								break ;
+							}
+						}
+					}
+				}
+				if (flag == "true") {
+					wsRemote.getWorkSheetCount(true);
+				} else if (flag == "false") {
+					wsRemote.getWorkSheetCount(false);
+				}
+			}
+			
+			private function wireResult(event:ResultEvent):void {
+				AppEvent.dispatch(EventType.WIRING_NUM,event.result);
+			}
+			
+			private function workResult(event:ResultEvent):void {
+				AppEvent.dispatch(EventType.WORK_NUM,event.result);
+			}
+			
+			public  function loadConfig():void {
+				AppEvent.addListener(EventType.WIRING_WORK_NUM,wringWorkNum);
+				var configService:HTTPService = new HTTPService();
+				configService.url = WIRING_SHEET;
+				configService.resultFormat = HTTPService.RESULT_FORMAT_TEXT;
+				configService.addEventListener(ResultEvent.RESULT, configServiceWiring);
+				configService.send();
+				configService = new HTTPService();
+				configService.url = WORK_SHEET;
+				configService.resultFormat = HTTPService.RESULT_FORMAT_TEXT;
+				configService.addEventListener(ResultEvent.RESULT, configServiceWork);
+				configService.send();
+			}
+			
+			private function configServiceWiring(event:ResultEvent):void {
+				configWiring = XML(event.result);
+			}
+			
+			private function configServiceWork(event:ResultEvent):void {
+				configWork = XML(event.result);
+				if (user) {
+					AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+				}
+			}
+			
+			private function alarmResult(event:ResultEvent):void {
+				AppEvent.dispatch(EventType.ALARM_ANIMATE,event.result);
+			}
+			
+			private function keyDownHandle(event:KeyboardEvent):void {
+				if (event.charCode == 13) {
+					login();
+				}
+			}
+			
+			public function showCode():void {
+				strCode = getCode(6);
+				lbcode.text = strCode;
+				var g:Graphics = lbcode.graphics;
+				g.clear();
+				for (var i:int = 0 ; i < 150;i++) {
+					g.beginFill(0xAAAAAA * Math.random());
+					g.drawCircle(Math.random()*lbcode.width,Math.random()*lbcode.height,1);
+					g.endFill();
+				}
+			}
+			
+			private function getCode(count:int):String {
+				var code:String="";
+				var num:Number=0;
+				for(var i:int=0;i<count;i++) {
+					num=Math.floor(Math.random()*10000);
+					if(num%2==0) {
+						//数字从48开始（48的keycode是0）
+						code=code+String.fromCharCode(48+(num%10));
+					}
+					else { //65大写字母，96小写字母
+						code=code+String.fromCharCode(65+(num%26));
+					}
+				}
+				return code;
+			}
+			
+			private function login():void {
+				/*if (validCode.text.toLowerCase() != strCode.toLowerCase()) {
+					showCode();
+					Alert.show("验证码错误");
+					return ;
+				}*/
+				var user:UserInfo = new UserInfo();
+				user.userId = userName.text;
+				user.password = MD5.hash(password.text);
+				remote.login(user);
+			}
+			
+			public function cancel():void {
+				userName.text = "";
+				password.text = "";
+				validCode.text = "";
+			}
+			
+			private function loginResult(event:ResultEvent):void {
+				user = event.result as UserInfo;
+				if (user != null) {
+					AppEvent.dispatch(EventType.USER_LOGIN);
+					AppEvent.dispatch(EventType.USER_LOGIN_SUCCESS,user);
+					AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+					alRemote.getWarningInWarningCount();
+				} else {
+					// 登录失败
+					Alert.show(resourceManager.getString(VIEWER_STRINGS,"E00001"));
+				}
+			}
+			
+			private function reloadResult(event:ResultEvent):void {
+				user = event.result as UserInfo;
+				if (user != null) {
+					AppEvent.dispatch(EventType.USER_LOGIN);
+					AppEvent.dispatch(EventType.USER_LOGIN_SUCCESS,user);
+					alRemote.getWarningInWarningCount();
+					loadConfig();
+				} else {
+					AppEvent.dispatch(EventType.USER_LOGOUT);
+				}
+			}
+			
+			private function logoutResult(event:ResultEvent):void {
+				if (logout) {
+					ExternalInterface.call("refresh");
+				}
+			}
+			
+			private function onfault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(resourceManager.getString(VIEWER_STRINGS,"E00002"),resourceManager.getString(VIEWER_STRINGS,"T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(resourceManager.getString(VIEWER_STRINGS,"E00003"),resourceManager.getString(VIEWER_STRINGS,"T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示");
+					Alert.show(resourceManager.getString(VIEWER_STRINGS,"E00004"),resourceManager.getString(VIEWER_STRINGS,"T00001"));
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(resourceManager.getString(VIEWER_STRINGS,"E00005"),resourceManager.getString(VIEWER_STRINGS,"T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			protected function window_moveHandler(event:MoveEvent):void {
+				var window:Form = event.currentTarget as Form;
+				
+				var bounds:Rectangle = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);//舞台的宽高
+				var windowBounds:Rectangle = window.getBounds(stage);//窗口的宽高
+				var x:Number;
+				var y:Number;
+				if (windowBounds.left <= bounds.left)
+					x = bounds.left;
+				else if (windowBounds.right >= bounds.right)
+					x = bounds.right - window.width;
+				else
+					x = window.x;
+				if (windowBounds.top <= bounds.top)
+					y = bounds.top;
+				else if (windowBounds.bottom >= bounds.bottom)
+					y = bounds.bottom - window.height;
+				else
+					y = window.y;
+				window.move(x, y);
+			}
+		]]>
+	</fx:Script>
+	<s:layout>
+		<s:VerticalLayout horizontalAlign="right" verticalAlign="middle" gap="0"/>
+	</s:layout>
+	<s:FormItem height="30">
+		
+	</s:FormItem>
+	<s:FormItem width="280" height="30" label="{resourceManager.getString(VIEWER_STRINGS,'lbUserName')}" color="0x000000">
+		<s:TextInput id="userName" color="0xffffff"/>
+	</s:FormItem>
+	<s:FormItem width="280" height="30" label="{resourceManager.getString(VIEWER_STRINGS,'lbPassword')}" color="0x000000">
+		<s:TextInput id="password" displayAsPassword="true" color="0xffffff"/>
+	</s:FormItem>
+	<s:FormItem width="280" height="30" label="{resourceManager.getString(VIEWER_STRINGS,'lbValidCode')}" color="0x000000">
+		<s:layout>
+			<s:HorizontalLayout />
+		</s:layout>
+		<s:TextInput id="validCode" width="95" color="0xffffff"/>
+		<s:Label id="lbcode" height="25" width="50" fontSize="14" click="showCode()" verticalAlign="middle" />
+	</s:FormItem>
+	<s:FormItem height="10">
+		
+	</s:FormItem>
+	<s:FormItem width="280" height="50" label=" ">
+		<s:layout>
+			<s:HorizontalLayout horizontalAlign="right" verticalAlign="bottom"/>
+		</s:layout>
+		<s:Button y="5" label="{resourceManager.getString(VIEWER_STRINGS,'lbLogin')}" click="login()"/>
+		<s:Button y="10" label="{resourceManager.getString(VIEWER_STRINGS,'lbCancel')}" click="cancel()" />
+	</s:FormItem>
+</s:Form>

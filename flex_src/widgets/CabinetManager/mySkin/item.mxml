@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:GridItemRenderer xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					xmlns:s="library://ns.adobe.com/flex/spark" 
+					xmlns:mx="library://ns.adobe.com/flex/mx" clipAndEnableScrolling="true" 
+					height="40" >
+	<fx:Script>
+		<![CDATA[
+			
+			[Bindable]private var bj:uint = 0xffffff;
+			
+			override public function prepare(hasBeenRecycled:Boolean):void 
+			{
+				if (data == null) {
+					return;
+				}
+				//图片单元加载
+				if(column.dataField=="image"){
+					lblData.visible = false;
+					img.visible = true;
+					img.source = data[column.dataField];
+				}else{
+					lblData.visible = true;
+					img.visible = false;
+					lblData.text = data[column.dataField];
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:states>
+		<mx:State name="normal"/>
+		<mx:State name="hovered"/>
+		<mx:State name="selected"/>
+	</s:states>
+	<s:Rect  left="0" top="0" bottom="0" right="0">
+		<s:fill>
+			<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+		</s:fill>
+	</s:Rect>
+	
+	<s:Label id="lblData" top="9" left="7"  verticalCenter="0"/>
+	<s:Image id="img" width="53" height="38" left="1" top="1" visible="false"/>
+</s:GridItemRenderer>

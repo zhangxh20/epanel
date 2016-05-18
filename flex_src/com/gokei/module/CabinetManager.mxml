@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Module xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		  xmlns:s="library://ns.adobe.com/flex/spark" initialize="init()"
+		  xmlns:mx="library://ns.adobe.com/flex/mx" xmlns:component="com.gokei.components.cabinetManager.*">
+	<fx:Declarations>
+		
+	</fx:Declarations>
+	 <fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.events.ResizeEvent;
+			import mx.resources.ResourceManager;
+			
+			import spark.components.Label;
+			import spark.components.List;
+			import spark.layouts.TileLayout;
+			[Bindable]
+			private var scrollwidth:Number;
+			[Bindable]
+			private var scrollheight:Number;
+			[Bindable]
+			private var dataList:ArrayCollection = new ArrayCollection();
+			
+			protected function init():void {
+				var lab:Label = new Label();
+//				lab.text = "当前机柜";
+				lab.text = ResourceManager.getInstance().getString("ViewerStrings","I00006");
+				addElement(lab);
+				lab.x = stage.stageWidth - 50;
+				lab.y = 180
+				cabinetChoose.x = stage.stageWidth - 50;
+				cabinetChoose.y = 200;
+				AppEvent.addListener(EventType.CABINET_SHOW_MNG,cabinetShowMng);
+				AppEvent.addListener(EventType.EQMT_PORTLIST_MNG,eqmtPortlistMng);
+				AppEvent.addListener(EventType.CABINET_SWITCH,cabinetSwitch);
+				AppEvent.addListener(EventType.CABINET_CLOSE,cabinetClose);
+				AppEvent.addListener(EventType.DIA_MNG_FIND,diaMngFind);
+				scrollwidth = stage.stageWidth;
+				scrollheight = stage.stageHeight-45;
+				stage.addEventListener(ResizeEvent.RESIZE, whenResize);
+			}
+				 //写一个whenResize函数, 如：
+			private function whenResize(e:Event):void {
+				scrollwidth = stage.stageWidth;
+				scrollheight = stage.stageHeight-45;
+			}
+			 
+			/**
+			 * 显示机柜
+			 */ 
+			private function cabinetShowMng(event:AppEvent):void {
+				var obj:Object = event.data;
+				var id:int = int(obj.id);
+				var index:int = obj.cabinetIndex;
+				cabinetCodeAdd(obj);
+				if(index == 0){
+					scr1.visible =  true;
+					scr2.visible = false;
+					cab1.cabinetInit(obj);
+				}else{
+					scr1.visible = false;
+					scr2.visible = true;
+					cab2.cabinetInit(obj);
+				}
+			}
+			
+			private function eqmtPortlistMng(event:AppEvent):void {
+				var obj:Object = event.data;
+				if (obj.cabinetIndex == 0) {
+					cab1.loadPortList(obj);
+				} else {
+					cab2.loadPortList(obj);
+				}
+			}
+			
+			public function cabinetCodeAdd(cabinetObj:Object):void {
+				var obj:Object = new Object();
+				obj.code = cabinetObj.code;
+				if (dataList.length == 0) {
+					dataList.addItem(obj);
+					cabinetChoose.selectedIndex = 0;
+				} else if (dataList.length == 1) {
+					if (cabinetObj.cabinetIndex == 0) {
+						dataList.addItemAt(obj,0);
+						cabinetChoose.selectedIndex = 0;
+						//如果集合里的机柜是同一个，编号相同，则去掉上次添加的
+						if (dataList.getItemAt(1).code == cabinetObj.code){
+							dataList.removeItemAt(1);
+						}
+					} else {
+						dataList.addItem(obj);
+						cabinetChoose.selectedIndex = 1;
+					}
+				} else {
+					if (cabinetObj.cabinetIndex == 1) {
+						dataList.removeItemAt(1);
+						dataList.addItem(obj);
+						cabinetChoose.selectedIndex = 1;
+					} else {
+						dataList.removeItemAt(0);
+						dataList.addItemAt(obj,0);
+						cabinetChoose.selectedIndex = 0;
+					}	
+				}
+			}
+			
+			/**
+			 * 
+			 * 展示图与管理图连动式，机柜切换
+			 */ 
+			private function cabinetSwitch(event:AppEvent):void {
+				var cabinetIndex:int = int(event.data);
+				if (cabinetIndex == 0) {
+					scr1.visible = true;
+					scr2.visible = false;
+					cabinetChoose.selectedIndex = 0;
+				} else {
+					scr1.visible = false;
+					scr2.visible = true;
+					cabinetChoose.selectedIndex = 1
+				}
+			}
+			
+			private function cabinetClose(event:AppEvent):void {
+				var index:int = int(event.data);
+				if (dataList.length == 1){
+					if (index == 0) {
+						cab1.closeCabinet();
+						
+					} else {
+						cab2.closeCabinet();
+					}
+					dataList.removeItemAt(0);
+				}else{
+					if (index == 0) {
+						scr1.visible = false;
+						scr2.visible = true;
+						cab1.closeCabinet();
+						dataList.removeItemAt(0);
+						cabinetChoose.selectedIndex = 0;
+					} else {
+						scr1.visible = true;
+						scr2.visible = false;
+						cab2.closeCabinet();
+						dataList.removeItemAt(1);
+						cabinetChoose.selectedIndex = 1;
+					}
+				}
+			}
+			
+			private function cabChange():void {
+				if (cabinetChoose.selectedIndex == 0) {
+					scr1.visible = true;
+					scr2.visible = false;
+				} else {
+					scr1.visible = false;
+					scr2.visible = true;
+				}
+			}
+			
+			/**
+			 * 
+			 * 机柜展示图联动到机柜管理图
+			 */ 
+			private function diaMngFind(event:AppEvent):void {
+				var obj:Object = event.data;
+				if (obj.cabinetIndex == 0) {
+					cab1.diaFindShow(obj);
+				} else {
+					cab2.diaFindShow(obj);
+				}
+			}
+		]]>
+	 </fx:Script>
+	<s:Scroller id="scr1" x="10" y="45" width="{scrollwidth}" height="{scrollheight}" interactionMode="touch" visible="false">
+		<component:GridCabinet id="cab1" y="40" horizontalCenter="0" cabinetIndex="0"/>
+	</s:Scroller>
+	<s:Scroller id="scr2" x="10" y="45" width="{scrollwidth}" height="{scrollheight}" interactionMode="touch">
+		<component:GridCabinet id="cab2" y="40" horizontalCenter="0"  cabinetIndex="1"/>
+	</s:Scroller>
+	<s:List id="cabinetChoose" borderVisible="true" dataProvider="{dataList}" requireSelection="true" labelField="code" width="60" change="cabChange()">
+		<s:layout>
+			<s:TileLayout horizontalAlign="center" paddingBottom="10" paddingLeft="10" paddingRight="10" paddingTop="10"
+						  requestedColumnCount="1"/>
+		</s:layout>
+	</s:List>
+</s:Module>

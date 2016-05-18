@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 底图（机柜展示图，机柜管理图）
+//
+// @Author zhang
+// @Version v1.0
+// @Date 2012-09
+///////////////////////////////////////////////////////////////////////////
+-->
+<s:SkinnableContainer xmlns:fx="http://ns.adobe.com/mxml/2009"
+					  xmlns:s="library://ns.adobe.com/flex/spark"
+					  xmlns:mx="library://ns.adobe.com/flex/mx"
+					  width="100%" height="100%" backgroundColor="0xffffff" creationComplete="init()">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.core.IVisualElement;
+			import mx.events.ModuleEvent;
+			import mx.modules.IModuleInfo;
+			import mx.modules.ModuleManager;
+			
+			private var ctlInfo:IModuleInfo;
+			
+			private var cmngInfo:IModuleInfo;
+			
+			private var nwdInfo:IModuleInfo;
+			
+			private var cabinetDiagram:IVisualElement;
+			
+			private var cabinetManager:IVisualElement;
+			
+			private var networkDiagram:IVisualElement;
+			
+			private var securityDomain:SecurityDomain =
+				Security.sandboxType == Security.REMOTE ? SecurityDomain.currentDomain : null;
+			
+			private function init():void {
+				// 机柜展示图模块 
+				ctlInfo = ModuleManager.getModule("com/gokei/module/CabinetDiagram.swf");
+				ctlInfo.data = "CabinetDiagram";
+				ctlInfo.addEventListener(ModuleEvent.READY, moduleReadyHandler);
+				ctlInfo.addEventListener(ModuleEvent.ERROR, moduleErrorHandler);
+				ctlInfo.load(null, securityDomain, null, moduleFactory);
+				this.cursorManager.setBusyCursor();
+				
+				// 机柜管理图模块 
+				cmngInfo = ModuleManager.getModule("com/gokei/module/CabinetManager.swf");
+				cmngInfo.data = "CabinetManager";
+				cmngInfo.addEventListener(ModuleEvent.READY, moduleReadyHandler);
+				cmngInfo.addEventListener(ModuleEvent.ERROR, moduleErrorHandler);
+				cmngInfo.load(null, securityDomain, null, moduleFactory);
+				this.cursorManager.setBusyCursor();
+				
+				// 机柜管理图模块 
+				nwdInfo = ModuleManager.getModule("com/gokei/module/NetworkDiagram.swf");
+				nwdInfo.data = "NetworkDiagram";
+				nwdInfo.addEventListener(ModuleEvent.READY, moduleReadyHandler);
+				nwdInfo.addEventListener(ModuleEvent.ERROR, moduleErrorHandler);
+				nwdInfo.load(null, securityDomain, null, moduleFactory);
+				this.cursorManager.setBusyCursor();
+			}
+			
+			/**
+			 * 载入机柜展示图和机柜管理图模块
+			 */ 
+			private function moduleReadyHandler(event:ModuleEvent):void {
+				this.cursorManager.removeBusyCursor();
+				var moduleInfo:IModuleInfo = event.module;
+				var moduleData:String = moduleInfo.data as String;
+				if (moduleData == "CabinetDiagram") {
+					cabinetDiagram = moduleInfo.factory.create() as IVisualElement;
+					addElement(cabinetDiagram);
+				} else if (moduleData == "CabinetManager") {
+					cabinetManager = moduleInfo.factory.create() as IVisualElement;
+					addElement(cabinetManager);
+				} else if (moduleData == "NetworkDiagram") {
+					networkDiagram = moduleInfo.factory.create() as IVisualElement;
+					addElement(networkDiagram);
+				}
+			}
+			
+			private function moduleErrorHandler(event:ModuleEvent):void {
+				this.cursorManager.removeBusyCursor();
+			}
+			
+			public function showCabinetDiagram():void {
+				back.visible = true;
+				cabinetDiagram.visible = true;
+				cabinetManager.visible = false;
+				networkDiagram.visible = false;
+				
+			}
+			
+			public function showCabinetManager():void {
+				back.visible = true;
+				cabinetDiagram.visible = false;
+				cabinetManager.visible = true;
+				networkDiagram.visible = false;
+			}
+			
+			public function showNetworkDiagram():void {
+				back.visible = false;
+				networkDiagram.visible = true;
+				cabinetDiagram.visible = false;
+				cabinetManager.visible = false;
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Image id="back" source="assets/images/back.png"/>
+</s:SkinnableContainer>

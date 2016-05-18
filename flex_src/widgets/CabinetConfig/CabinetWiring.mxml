@@ -1,0 +1,776 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2013 GOKEI. All Rights Reserved.
+//
+// 静态配线
+
+// @Author zhang
+// @Version v1.0
+// @Date 2013-01
+///////////////////////////////////////////////////////////////////////////
+-->
+<s:VGroup xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		  xmlns:s="library://ns.adobe.com/flex/spark" 
+		  xmlns:mx="library://ns.adobe.com/flex/mx"
+		  xmlns:gokei="widgets.CabinetConfig.*"
+		  width="100%" height="100%" creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="cabCfgRemote" destination="cabinetConfigService" fault="onFault(event)">
+			<s:method name="getccShelfById" result="loadResult(event)" />
+			<s:method name="getCCNetEquipmentById" result="loadResult(event)" />
+			<s:method name="swShelfStaticCable" result="wiringResult(event)" />
+			<s:method name="truShelfStaticCable" result="wiringResultX(event)" />
+			<s:method name="queryTarget" result="queryResult(event)" />
+			<s:method name="deleteStaticCable" result="deleteResult(event)" />
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.resources.ResourceManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			import spark.components.TextInput;
+			// 第一个配线对象
+			private var obj1:Object = new Object();
+			// 第二个配线对象
+			private var obj2:Object = new Object();
+			// 设备个数
+			private var eqmtCount:int = 0;
+			// 当前编辑的类型
+			private var currentType:String;
+			// 当前编辑（配线）的表格
+			private var grid:WiringGrid;
+			// 第一个端口的输入框（端口编号）
+			private var input1:TextInput;
+			// 第二个端口的输入框（端口编号）
+			private var input2:TextInput;
+			// 第一个端口的ID
+			private var portId1:int = -1;
+			// 第二个端口的ID
+			private var portId2:int = -1;
+			// 查询的索引
+			private var queryIndex:int;
+			// 链路查询时，显示目标端口
+			private var showTarget:Boolean = false;
+			// 机柜ID数组，静态配线完成之后，刷新机柜图
+			private var cabinetIds : ArrayCollection ;
+			// 机柜ID
+			private var cabinetId1 : int = -1 ;
+			private var cabinetId2 : int = -1 ;
+			// 自动配线的端口索引
+			private var autoIndex:int = -1;
+			// 配线架类型
+//			private var typeArray:Array = ["主干配线架","水平配线架","交换机配线架"];
+			private var typeArray:Array = [ResourceManager.getInstance().getString("ViewerStrings","T00075"),ResourceManager.getInstance().getString("ViewerStrings","T00076"),ResourceManager.getInstance().getString("ViewerStrings","T00077")];
+			// 表格类型
+			private var objArray:Array = [
+				{ // 0主干配线架
+					props:[
+//						{key:"cabinetCode",name:"所在机柜",type:"label"},
+//						{key:"uNo",name:"所在U层",type:"label"},
+//						{key:"seqNo",name:"配线架序号",type:"label"},
+//						{key:"code",name:"设备ID",type:"label"},
+//						{key:"name",name:"设备名称",type:"label"},
+//						{key:"productNo",name:"型号",type:"label"},
+//						{key:"brand",name:"品牌",type:"label"},
+//						{key:"type",name:"类型",type:"label"}
+						{key:"cabinetCode",name:ResourceManager.getInstance().getString("ViewerStrings","T00084"),type:"label"},
+						{key:"uNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00085"),type:"label"},
+						{key:"seqNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00092"),type:"label"},
+						{key:"code",name:ResourceManager.getInstance().getString("ViewerStrings","T00079"),type:"label"},
+						{key:"name",name:ResourceManager.getInstance().getString("ViewerStrings","T00080"),type:"label"},
+						{key:"productNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00081"),type:"label"},
+						{key:"brand",name:ResourceManager.getInstance().getString("ViewerStrings","T00082"),type:"label"},
+					    {key:"type",name:ResourceManager.getInstance().getString("ViewerStrings","T00093"),type:"label"}
+					],
+					propRow:[
+//						{name:"端口序号",type:"label"},
+//						{name:"端口编号",type:"label"},
+//						{name:"目标端口",type:"label"},
+//						{name:"目标编号",type:"label"}
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00086"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00094"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00095"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00096"),type:"label"}
+					]
+				},
+				{ // 1水平配线架
+					props:[
+//						{key:"cabinetCode",name:"所在机柜",type:"label"},
+//						{key:"uNo",name:"所在U层",type:"label"},
+//						{key:"seqNo",name:"配线架序号",type:"label"},
+//						{key:"code",name:"设备ID",type:"label"},
+//						{key:"name",name:"设备名称",type:"label"},
+//						{key:"productNo",name:"型号",type:"label"},
+//						{key:"brand",name:"品牌",type:"label"},
+//						{key:"type",name:"类型",type:"label"},
+						{key:"cabinetCode",name:ResourceManager.getInstance().getString("ViewerStrings","T00084"),type:"label"},
+						{key:"uNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00085"),type:"label"},
+						{key:"seqNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00092"),type:"label"},
+						{key:"code",name:ResourceManager.getInstance().getString("ViewerStrings","T00079"),type:"label"},
+						{key:"name",name:ResourceManager.getInstance().getString("ViewerStrings","T00080"),type:"label"},
+						{key:"productNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00081"),type:"label"},
+						{key:"brand",name:ResourceManager.getInstance().getString("ViewerStrings","T00082"),type:"label"},
+						{key:"type",name:ResourceManager.getInstance().getString("ViewerStrings","T00093"),type:"label"}
+					],
+					propRow:[
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00086"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00094"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00097"),type:"label",editType:"room"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00095"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00096"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00098"),type:"label"}
+					]
+				},
+				{ // 2交换机配线架
+					props:[
+//						{key:"cabinetCode",name:"所在机柜",type:"label"},
+//						{key:"uNo",name:"所在U层",type:"label"},
+//						{key:"seqNo",name:"配线架序号",type:"label"},
+//						{key:"code",name:"设备ID",type:"label"},
+//						{key:"name",name:"设备名称",type:"label"},
+//						{key:"productNo",name:"型号",type:"label"},
+//						{key:"brand",name:"品牌",type:"label"},
+//						{key:"type",name:"类型",type:"label"}
+						{key:"cabinetCode",name:ResourceManager.getInstance().getString("ViewerStrings","T00084"),type:"label"},
+						{key:"uNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00085"),type:"label"},
+						{key:"seqNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00092"),type:"label"},
+						{key:"code",name:ResourceManager.getInstance().getString("ViewerStrings","T00079"),type:"label"},
+						{key:"name",name:ResourceManager.getInstance().getString("ViewerStrings","T00080"),type:"label"},
+						{key:"productNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00081"),type:"label"},
+						{key:"brand",name:ResourceManager.getInstance().getString("ViewerStrings","T00082"),type:"label"},
+						{key:"type",name:ResourceManager.getInstance().getString("ViewerStrings","T00093"),type:"label"}
+					],
+					propRow:[
+//						{name:"端口序号",type:"label"},
+//						{name:"交换机号",type:"label"},
+//						{name:"目标端口",type:"label"},
+//						{name:"目标编号",type:"label"}
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00086"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00094"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00095"),type:"label"},
+						{name:ResourceManager.getInstance().getString("ViewerStrings","T00096"),type:"label"}
+					]
+				},
+				{ // 3网络设备
+					props:[
+//						{key:"cabinetCode",name:"所在机柜",type:"label"},
+//						{key:"uNo",name:"所在U层",type:"label"},
+//						{key:"upLinkCode",name:"upLink编号",type:"label"},
+//						{key:"code",name:"设备ID",type:"label"},
+//						{key:"name",name:"设备名称",type:"label"},
+//						{key:"productNo",name:"型号",type:"label"},
+//						{key:"brand",name:"品牌",type:"label"}
+						{key:"cabinetCode",name:ResourceManager.getInstance().getString("ViewerStrings","T00084"),type:"label"},
+						{key:"uNo",name:ResourceManager.getInstance().getString("ViewerStrings","T00085"),type:"label"},
+						{key:"upLinkCode",name:ResourceManager.getInstance().getString("ViewerStrings","T00090"),type:"label"},
+						{key:"code",name:ResourceManager.getInstance().getString("ViewerStrings","T00079"),type:"label"},
+						{key:"name",name:ResourceManager.getInstance().getString("ViewerStrings","T00080"),type:"label"},
+						{key:"productCode",name:ResourceManager.getInstance().getString("ViewerStrings","T00081"),type:"label"},
+						{key:"brand",name:ResourceManager.getInstance().getString("ViewerStrings","T00082"),type:"label"}
+					],
+					propRow:[{name:ResourceManager.getInstance().getString("ViewerStrings","T00086"),type:"label"},{name:ResourceManager.getInstance().getString("ViewerStrings","T00094"),type:"label"}]
+				}
+			];
+			
+			private function init():void {
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				addEventListener(KeyboardEvent.KEY_DOWN,function(event:KeyboardEvent):void{
+					if (event.charCode == 13) {
+						buttonClick();
+					}
+				});
+			}
+			
+			private function refresh(event:AppEvent):void {
+				var arr:Array = event.data.arr as Array;
+				var obj:Object = event.data.objx;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[23] == item) {
+						if (obj.id == obj1.eqmtId) {
+							obj.type = obj1.type;
+							obj.cabinetId = cabinetId1;
+							remove(0);
+							configSend(obj);
+						} else if (obj.id == obj2.eqmtId) {
+							obj.type = obj2.type;
+							obj.cabinetId = cabinetId2;
+							remove(1);
+							configSend(obj);
+						}
+						break;
+					}
+				}
+			}
+			
+			/**
+			 * 树形图发送设备，进行编辑
+			 */ 
+			public function configSend(obj:Object):void {
+				if (eqmt1.empty) {
+					if (obj2.type == obj.type && obj2.eqmtId == obj.id) {
+//						Alert.show("选择的设备重复")
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00039"));
+						return;
+					} 
+					grid = eqmt1;
+					obj1.type = obj.type;
+					obj1.eqmtId = obj.id; 
+					cabinetId1 = obj.cabinetId;
+				} else if(eqmt2.empty) {
+					if (obj1.type == obj.type && obj1.eqmtId == obj.id) {
+//						Alert.show("选择的设备重复")
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00039"));
+						return;
+					} 
+					grid = eqmt2;
+					obj2.type = obj.type;
+					obj2.eqmtId = obj.id;
+					cabinetId2 = obj.cabinetId;
+				} else {
+//					Alert.show("静态配线的设备已经发送了2个");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00072"));
+					return;
+				}
+				currentType = obj.type;
+				switch(currentType)
+				{
+					case "smartShelf":
+					{
+						cabCfgRemote.getccShelfById(obj.id);
+						break;
+					}
+					case "shelf":
+					{
+						cabCfgRemote.getccShelfById(obj.id);
+						break;
+					}
+					case "netEquipment" :
+					{
+						cabCfgRemote.getCCNetEquipmentById(obj.id);
+						break;
+					}
+					default:
+					{
+						break;
+					}
+				}
+			}
+			
+			/**
+			 * 载入表格数据
+			 */ 
+			private function loadResult(event:ResultEvent):void {
+				var obj:Object = event.result;
+				if (!obj)return;
+				switch(currentType)
+				{
+					case "smartShelf" :
+					{
+						if (grid == eqmt1) {
+							obj1.flag = obj.type;
+						} else {
+							obj2.flag = obj.type;
+						}
+						
+						// -------- 检查是否可以配静态链路 ---------
+						if (checkType()) {
+							obj.type = typeArray[obj.type];
+							grid.editObj = obj;
+							grid.itemList = obj.itemList;
+							if (obj.type == typeArray[0]) {
+								grid.equipmentShow(objArray[0]);
+							} else if (obj.type == typeArray[1]) {
+								grid.equipmentShow(objArray[1]);
+							} else if (obj.type == typeArray[2]) {
+								grid.equipmentShow(objArray[2]);
+							}
+							grid.empty = false;
+							eqmtCount ++;
+						}
+						
+						break;
+					}
+					case "shelf" :
+					{
+						if (grid == eqmt1) {
+							obj1.flag = obj.type;
+						} else {
+							obj2.flag = obj.type;
+						}
+						
+						if (checkType()) {
+							obj.type = typeArray[obj.type];
+							grid.editObj = obj;
+							grid.itemList = obj.itemList;
+							if (obj.type == typeArray[0]) {
+								grid.equipmentShow(objArray[0]);
+							} else if (obj.type == typeArray[1]) {
+								grid.equipmentShow(objArray[1]);
+							} else if (obj.type == typeArray[2]) {
+								grid.equipmentShow(objArray[2]);
+							}
+							grid.empty = false;
+							eqmtCount ++;
+						}
+						
+						break;
+					}
+					case "netEquipment" :
+					{
+						if (grid == eqmt1) {
+							obj1.flag = -2;
+						} else {
+							obj2.flag = -2;
+						}
+						obj.type = ResourceManager.getInstance().getString("ViewerStrings","I00073");
+						if (checkType()) {
+							grid.editObj = obj;
+							grid.itemList = obj.itemList;
+							grid.equipmentShow(objArray[3]);
+							grid.empty = false;
+							eqmtCount ++;
+						}
+						
+						break;
+					}
+					default:
+					{
+						break;
+					}
+				}
+				// ---------------- 显示目标端口 ---------------
+				if (showTarget) {
+					var col:Object;
+					if (queryIndex == 0) {
+						col = eqmt2.getColObjByPortId(portId2);
+						input2 = col.input;
+						eqmt2.showRect(col);
+						eqmt2.selected = true;
+					} else {
+						col = eqmt1.getColObjByPortId(portId1);
+						input1 = col.input;
+						eqmt1.showRect(col);
+						eqmt1.selected = true;
+					}
+					showTarget = false;
+				}
+			}
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			/**
+			 * 清空表格内容
+			 */ 
+			private function remove(index:int):void {
+				if (index == 0) {
+					obj1.type = "";
+					obj1.eqmtId = -1;
+					eqmt1.clear();
+					eqmt1.empty = true;
+					eqmt1.selected = false;
+					eqmtCount--;
+					cabinetId1 = -1;
+				} else {
+					obj2.type = "";
+					obj2.eqmtId = -1;
+					eqmt2.clear();
+					eqmt2.empty = true;
+					eqmt1.selected = false;
+					eqmtCount--;
+					cabinetId2 = -1;
+				}
+			}
+			
+			public function clear():void {
+				remove(0);
+				remove(1);
+			}
+			
+			private function checkType():Boolean {
+				var bool:Boolean = true;
+				// flag=1:水平配线架,flag=2:交换机配线架,flag=-2交换机,flag=0:主干
+				if (obj1.flag == 1 || obj2.flag == 1) {
+//					Alert.show("水平配线架");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00040"));
+					bool = false;
+				}
+				if (eqmtCount == 1) {
+					if ((obj1.flag + obj2.flag) != 0) {
+						bool = false;
+//						Alert.show("不能配静态链路");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00041"));
+					}
+				}
+				return bool;
+			}
+			
+			protected function eqmt1InputClick(event:ConfigEvent):void {
+				eqmt1.showRect(event.data);
+				eqmt1.selected = true;
+				input1 = event.data.input;
+				portId1 = int(event.data.portId);
+				if(rb1.selected) {
+					queryIndex = 0;
+					cabCfgRemote.queryTarget(portId1);
+				}
+			}
+			
+			protected function eqmt2InputClick(event:ConfigEvent):void {
+				eqmt2.showRect(event.data);
+				eqmt2.selected = true;
+				input2 = event.data.input;
+				portId2 = int(event.data.portId);
+				if(rb1.selected) {
+					queryIndex = 1;
+					cabCfgRemote.queryTarget(portId2);
+				}
+			}
+			
+			private function wiring():void {
+				if (!eqmt1.selected || !eqmt2.selected) {
+					return;
+				}
+				// ---------------- 交换机配线架跟交换机配线 ----------------
+				if (obj1.flag * obj2.flag == -4) {
+					if (obj1.flag == -2) {
+						if (input2.text.length > 0) {
+//							Alert.show("配线架的端口已配线");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00042"));
+							return;
+						}
+						cabCfgRemote.swShelfStaticCable(portId2,portId1);
+					} else {
+						if (input1.text.length > 0) {
+//							Alert.show("配线架的端口已配线");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00042"));
+							return;
+						}
+						cabCfgRemote.swShelfStaticCable(portId1,portId2);
+					}
+				// ---------------- 主干配线架跟主干配线架配线 ----------------
+				} else {
+					if (input1.text.length == 0) {
+//						Alert.show("第一个配线架的端口编号不能为空");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00043"));
+						return;
+					}
+					cabCfgRemote.truShelfStaticCable(portId1,portId2);
+				}
+			}
+			
+			private function buttonClick():void {
+				if (rb1.selected) {
+					if (eqmt1.selected && eqmt2.selected) {
+						cabCfgRemote.deleteStaticCable(portId1);
+					}
+				} else {
+					wiring();
+				}
+			}
+			
+			private function wiringResult(event:ResultEvent):void {
+				if (event.result == "NG") {
+//					Alert.show("端口类型不一致，无法配线");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00044"));
+					return;
+				}
+				if (event.result == "NG1") {
+//					Alert.show("端口已配线，无法配线");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00045"));
+					return;
+				}
+				if (event.result == null) {
+//					Alert.show("配线失败");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00046"));
+					return;
+				}
+				eqmt1.selected = false;
+				eqmt2.selected = false;
+				if (obj1.flag * obj2.flag == -4) {
+					input2.text = event.result as String;
+					input1.text = event.result as String;
+					if (obj1.flag == -2) {
+						input1.setStyle('contentBackgroundColor', 0x0c6aa5);
+					} else {
+						input2.setStyle('contentBackgroundColor', 0x0c6aa5);
+					}
+				}
+				// 自动配线，配完当前的线后，接着配下一根线
+				if (autoIndex > 0 && autoIndex != eqmt1.itemList.length && autoIndex != eqmt2.itemList.length) {
+					var col:Object;
+					portId1 = int((eqmt1.itemList.getItemAt(autoIndex) as ArrayCollection).getItemAt(0));
+					col = eqmt1.getColObjByPortId(portId1);
+					input1 = col.input;
+					eqmt1.showRect(col);
+					eqmt1.selected = true;
+					portId2 = int((eqmt2.itemList.getItemAt(autoIndex) as ArrayCollection).getItemAt(0));
+					col = eqmt2.getColObjByPortId(portId2);
+					input2 = col.input;
+					eqmt2.showRect(col);
+					eqmt2.selected = true;
+					setTimeout(function ():void {
+						if (obj1.flag == -2) {
+							cabCfgRemote.swShelfStaticCable(portId2,portId1);
+						} else {
+							cabCfgRemote.swShelfStaticCable(portId1,portId2);
+						}
+					},200);
+					
+					autoIndex ++;
+				} else {
+					autoIndex = 0;
+				}
+				
+				//刷新机柜图
+				if (cabChk.selected){
+					cabinetIds = new ArrayCollection();
+					cabinetIds.addItem(cabinetId1);
+					cabinetIds.addItem(cabinetId2);
+					AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+				}
+				//刷新统计图
+				var data:Object = {arr:[EventType.REFRESH_ID[13]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			
+			private function wiringResultX(event:ResultEvent):void {
+				if (event.result == -1) {
+//					Alert.show("配线架上的端口已配线 ");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00047"));
+					return;
+				}
+				if (event.result == -2) {
+//					Alert.show("配线架上的端口已配线 ");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00047"));
+					return;
+				}
+				if (event.result == 0) {
+//					Alert.show("配线失败");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00046"));
+					return;
+				}
+				eqmt1.selected = false;
+				eqmt2.selected = false;
+				input1.setStyle('contentBackgroundColor', 0x0c6aa5);
+				input2.setStyle('contentBackgroundColor', 0x0c6aa5);
+				input2.text = input1.text;
+				// 机柜联动
+				if (cabChk.selected){
+					cabinetIds = new ArrayCollection();
+					cabinetIds.addItem(cabinetId1);
+					cabinetIds.addItem(cabinetId2);
+					AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+				}
+				// 刷新设备配置表格
+				var refreshData:Object = {eqmtId1:obj1.eqmtId,eqmtId2:obj2.eqmtId};
+				AppEvent.dispatch(EventType.CABINET_CONFIG_REFRESH,refreshData);
+			}
+			
+			/**
+			 * 查询背后端口所连的目标端口
+			 */ 
+			private function queryResult(event:ResultEvent):void {
+				var obj:Object = event.result;
+				var col:Object;
+				// ---------------- 查询的是第一个设备 ----------------
+				if (queryIndex == 0) {
+					if (obj["portId"] == null) {
+						if(obj2.eqmtId && obj2.eqmtId != -1) {
+							eqmt2.selected = false;
+							portId2 = -1;
+						}
+						return;
+					}
+					if (obj2.eqmtId == obj.eqmtId && getTypeId(obj2.type) == obj["eqmtType"] ) {
+						col = eqmt2.getColObjByPortId(obj["portId"]);
+						input2 = col.input;
+						eqmt2.showRect(col);
+						eqmt2.selected = true;
+						portId2 = obj["portId"];
+					} else {
+						grid = eqmt2;
+						obj2.eqmtId = obj["eqmtId"];
+						showTarget = true;
+						portId2 = obj["portId"];
+						if (obj["eqmtType"] == 0) {
+							obj2.type = "smartShelf";
+							currentType = "smartShelf";
+							cabCfgRemote.getccShelfById(obj["eqmtId"]);
+						} else {
+							obj2.type = "netEquipment";
+							currentType = "netEquipment";
+							cabCfgRemote.getCCNetEquipmentById(obj["eqmtId"]);
+						}
+					}
+				} 
+				// ---------------- 查询的是第二个设备 ----------------
+				else {
+					if (obj["portId"] == null) {
+						if(obj1.eqmtId) {
+							eqmt1.selected = false;
+						}
+						return;
+					}
+					if (obj1.eqmtId == obj["eqmtId"] && getTypeId(obj1.type) == obj["eqmtType"] ) {
+						col = eqmt1.getColObjByPortId(obj["portId"]);
+						input1 = col.input;
+						eqmt1.showRect(col);
+						eqmt1.selected = true;
+						portId1 = obj["portId"];
+					} else {
+						grid = eqmt1;
+						obj1.eqmtId = obj["eqmtId"];
+						showTarget = true;
+						portId1 = obj["portId"];
+						if (obj["eqmtType"] == 0) {
+							obj1.type = "smartShelf";
+							currentType = "smartShelf";
+							cabCfgRemote.getccShelfById(obj["eqmtId"]);
+						} else {
+							obj1.type = "netEquipment";
+							currentType = "netEquipment";
+							cabCfgRemote.getCCNetEquipmentById(obj["eqmtId"]);
+						}
+					}
+				}
+			}
+			
+			private function getTypeId(type:String):int {
+				var id:int = -1;
+				if (type == "smartShelf") {
+					id = 0;
+				} else if (type == "shelf") {
+					id = 0;
+				} else if (type == "netEquipment") {
+					id = 1;
+				}
+				return id;
+			}
+			
+			private function deleteResult(event:ResultEvent):void {
+				if (event.result == 0) {
+//					Alert.show("删除失败");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00020"));
+					return;
+				}
+				if (event.result < 0) {
+//					Alert.show("端口上有动态跳线，无法删除");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00048"));
+					return;
+				}
+				if (event.result == 1) {
+					if (obj1.flag * obj2.flag == -4) {
+						if (obj1.flag == -2) {
+							input2.text = "";
+						} else {
+							input1.text = "";
+						}
+					} else {
+						input1.text = "";
+						input2.text = "";
+					}
+					input1.setStyle('contentBackgroundColor', 0xa2d2ff);
+					input2.setStyle('contentBackgroundColor', 0xa2d2ff);
+					if (cabChk.selected){
+						cabinetIds = new ArrayCollection();
+						cabinetIds.addItem(cabinetId1);
+						cabinetIds.addItem(cabinetId2);
+						AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+					}
+				}
+			}
+			
+			private function rbClick():void {
+				if (eqmt1.selected) {
+					queryIndex = 0;
+					cabCfgRemote.queryTarget(portId1);
+				}
+			}
+			
+			private function autoWiring():void {
+				// 表格1和表格2必须有内容（有设备发送过来）
+				if(eqmt1.empty || eqmt2.empty) {
+					return;
+				}
+				var col:Object;
+				if (obj1.flag * obj2.flag == -4) {
+					portId1 = int((eqmt1.itemList.getItemAt(0) as ArrayCollection).getItemAt(0));
+					col = eqmt1.getColObjByPortId(portId1);
+					input1 = col.input;
+					eqmt1.showRect(col);
+					eqmt1.selected = true;
+					portId2 = int((eqmt2.itemList.getItemAt(0) as ArrayCollection).getItemAt(0));
+					col = eqmt2.getColObjByPortId(portId2);
+					input2 = col.input;
+					eqmt2.showRect(col);
+					eqmt2.selected = true;
+					if (obj1.flag == -2) {
+						cabCfgRemote.swShelfStaticCable(portId2,portId1);
+					} else {
+						cabCfgRemote.swShelfStaticCable(portId1,portId2);
+					}
+				}
+				autoIndex = 1;
+				cabChk.selected = false;
+			}
+			
+		]]>
+	</fx:Script>
+	<s:HGroup width="100%" height="20" horizontalAlign="right" verticalAlign="middle">
+		<s:HGroup width="50%" height="100%" horizontalAlign="left">
+			<s:Label />
+			<s:RadioButton id="rb1" label="{ResourceManager.getInstance().getString('ViewerStrings','I00042')}" selected="true" click="rbClick()"/>
+			<s:RadioButton id="rb2" label="{ResourceManager.getInstance().getString('ViewerStrings','T00122')}" />
+			<s:Button label="{rb1.selected ? ResourceManager.getInstance().getString('ViewerStrings','T00052') : ResourceManager.getInstance().getString('ViewerStrings','T00123')}" click="buttonClick()"/>
+			<s:Button label="{resourceManager.getString('ViewerStrings','T00353')}" click="autoWiring()" visible="{rb2.selected}"/>
+		</s:HGroup>
+		<s:HGroup width="50%" height="100%" horizontalAlign="right">
+			<s:CheckBox id="cabChk" label="{ResourceManager.getInstance().getString('ViewerStrings','T00100')}"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00124')}" click="remove(0)"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00125')}" click="remove(1)" />
+			<s:Label />
+		</s:HGroup>
+	</s:HGroup>
+	<s:BorderContainer id="bc" borderStyle="solid" backgroundAlpha="0" width="100%" height="100%" >
+		<s:layout>
+			<s:VerticalLayout />
+		</s:layout>
+		<s:Scroller id="scr1" width="100%" height="50%" interactionMode="mouse" horizontalScrollPolicy="on">
+			<gokei:WiringGrid id="eqmt1" inputClick="eqmt1InputClick(event)"/>
+		</s:Scroller>
+		<s:Line xFrom="0" xTo="{bc.width}">
+			<s:stroke>
+				<s:SolidColorStroke color="0x000000" />
+			</s:stroke>
+		</s:Line>
+		<s:Scroller id="scr2" width="100%" height="50%" interactionMode="mouse" horizontalScrollPolicy="on">
+			<gokei:WiringGrid id="eqmt2" inputClick="eqmt2InputClick(event)"/>
+		</s:Scroller>
+	</s:BorderContainer>
+</s:VGroup>

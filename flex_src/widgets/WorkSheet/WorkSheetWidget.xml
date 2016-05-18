@@ -1,0 +1,19 @@
+<?xml version="1.0" ?>
+<configuration>
+	<buttons>
+		<button id="1" name="queryOwnWorkSheet"/>
+		<button id="2" name="queryWorkSheet"/>
+		<button id="3" name="sendWorkSheet"/>
+		<button id="4" name="deleteCreatedWorkSheet"/>
+		<button id="5" name="executeWorkSheeet"/>
+		<button id="6" name="deleteUnfinishedWorkSheet"/>
+		<button id="7" name="exportOwnFinishedWorkSheet"/>
+		<button id="8" name="exportFinishedWorkSheet"/>
+		<button id="9" name="exportOwnCreatedWorkSheet"/>
+		<button id="10" name="exportCreatedWorkSheet"/>
+		<button id="11" name="exportOwnUnfinishedWorkSheet"/>
+		<button id="12" name="exportUnfinishedWorkSheet"/>
+		<button id="13" name="exportOwnHistoryWorkSheet"/>
+		<button id="14" name="exportHistoryWorkSheet"/>
+	</buttons>
+</configuration>

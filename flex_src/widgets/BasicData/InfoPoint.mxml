@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:VGroup xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" creationComplete="init()">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+		<s:RemoteObject id="remote" destination="spotService">
+			<s:method name="infoPointImport" result="importResult(event)" />
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			import mx.rpc.events.ResultEvent;
+			private var fileRef:FileReference = new FileReference();
+			private var filter:FileFilter = new FileFilter("Office","*.txt;*.csv");
+			
+			private function init():void {
+				fileRef.addEventListener(Event.SELECT,onSelect);
+			}
+			
+			private function onSelect(event:Event):void {
+				fileRef.load();
+				fileName.text = fileRef.name;
+				upBt.enabled = true;
+			}
+			
+			protected function upload():void {
+				//防止多次点击上传 
+				upBt.enabled = false;
+				remote.infoPointImport(fileRef.data);
+			}
+			
+			protected function importResult(event:ResultEvent):void {
+				if (event.result == 0) {
+					Alert.show(resourceManager.getString('ViewerStrings','I00046'));
+					upBt.enabled = false;
+					fileName.text = "";
+				} else {
+					Alert.show(resourceManager.getString('ViewerStrings','E00090'));
+					upBt.enabled = false;
+					fileName.text = "";
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Label id="label" color="yellow" text="{resourceManager.getString('ViewerStrings','T00355')}" x="10"/>
+	<s:HGroup>
+		<s:Label text="{resourceManager.getString('ViewerStrings','T00029')}" />
+		<s:TextInput id="fileName" width="200"/>
+		<s:Button label="{resourceManager.getString('ViewerStrings','T00030')}" click="fileRef.browse([filter])" />
+		<s:Button id="upBt" label="{resourceManager.getString('ViewerStrings','T00116')}" click="upload()" enabled="false"/>
+	</s:HGroup>
+</s:VGroup>

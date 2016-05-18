@@ -1,0 +1,473 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" 
+			   xmlns:gokei="com.gokei.components.*" 
+			   width="500" height="320" title="{ResourceManager.getInstance().getString('ViewerStrings','T00240')}" close="cancel()" creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="bound" result="boundResult(event)"/>
+			<s:method name="modifyControllerBoundState"/>
+		</s:RemoteObject>
+		<s:RadioButtonGroup id="typeRb" />
+		<s:RadioButtonGroup id="buildCodeRb"/>
+		<s:RadioButtonGroup id="nameRb"/>
+		<s:RadioButtonGroup id="ipRb"/>
+		<s:RadioButtonGroup id="cabinetRb"/>
+		<s:RadioButtonGroup id="uNoRb"/>
+	</fx:Declarations>
+	
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace gokei "com.gokei.components.*";
+		.myStyle{
+			textAlign:left;
+			verticalAlign:middle;
+			fontWeight:bold;
+		}
+	</fx:Style>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			
+			public var scanObj:Object; //维护树形图
+			public var inputObj:Object; //安装树形图
+			public var mainTree:MaintainTree;// 维护树形图
+			public var initTree:InitTree ;//安装树形图
+			private var controllerIp:String ;
+			private var gatewayId:String;
+			public var timer:Timer = new Timer(20000);
+			//序号
+			private var comp1 : String = "";
+			private var comp2 : String = "";
+			//建筑编号
+			private var comp3 : String = "";
+			private var comp4 : String = "";
+			
+			
+			private function init():void {
+				AppEvent.addListener(EventType.TREE_SELECT,treeSelect);
+			}
+			
+			private function treeSelect(event:AppEvent):void {
+				var obj:Object = event.data;
+				if (obj.treeType == 0) {
+					scanObj = obj;
+					if(obj.type != 'other' && obj.isBound != 1){
+						if(obj.type == 'controller'){
+//							type1.text = "类型：智能管理主机";
+							type1.text = ResourceManager.getInstance().getString("ViewerStrings","T00241");
+							controllerIp1.text = "ip：" + obj.controllerIp ;
+							comp1 = obj.controllerIp;
+							buildCode1Rb.selected = false;
+						}else if(obj.type == 'collector'){
+//							type1.text = "类型：扫描仪";
+							type1.text = ResourceManager.getInstance().getString("ViewerStrings","T00242");
+//							controllerIp1.text = "扫描仪序号：" + obj.controllerIp + "-" + obj.collectorSeqNo ;
+							controllerIp1.text = ResourceManager.getInstance().getString("ViewerStrings","C00015") + obj.controllerIp + "-" + obj.collectorSeqNo ;
+							comp1 = obj.controllerIp + "-" + obj.collectorSeqNo ;
+							buildCode1Rb.selected = true;
+							
+						}else if(obj.type == 'shelf'){
+//							type1.text = "类型：配线架";
+							type1.text = ResourceManager.getInstance().getString("ViewerStrings","T00243");
+//							controllerIp1.text = "配线架序号：" + obj.controllerIp + "-" + obj.collectorSeqNo + "-" + obj.shelfSeqNo;
+							controllerIp1.text = ResourceManager.getInstance().getString("ViewerStrings","C00019") + obj.controllerIp + "-" + obj.collectorSeqNo + "-" + obj.shelfSeqNo;
+							comp1 = obj.controllerIp + "-" + obj.collectorSeqNo + "-" + obj.shelfSeqNo;
+							buildCode1Rb.selected = true;
+						}
+//						name1.text = "名称：" + obj.name;
+						name1.text = ResourceManager.getInstance().getString("ViewerStrings","T00134") + obj.name;
+						name1Rb.value = obj.name == ""?-1:0;
+						buildCode1Rb.value = obj.buildingCode == ""?-1:0;
+//						buildCode1.text = '建筑编号：' + obj.buildingCode;
+						buildCode1.text = ResourceManager.getInstance().getString("ViewerStrings","T00244") + obj.buildingCode;
+						comp3 = obj.buildingCode;
+						cabinet1Rb.value = obj.cabinetCode == ""?-1:0 ; //机柜编号
+//						cabinet1.text = "机柜ID：" + obj.cabinetCode ; 
+						cabinet1.text = ResourceManager.getInstance().getString("ViewerStrings","C00012") + obj.cabinetCode ; 
+						uNo1Rb.value = obj.uNo == 0?-1:obj.uNo ;
+//						uNo1.text = "所在U层："  ;
+						uNo1.text = ResourceManager.getInstance().getString("ViewerStrings","C00013")  ;
+						if (obj.uNo == 0){
+							uNo1.text += "";
+						} else {
+							uNo1.text += obj.uNo + 'U';
+						}
+						vGroup1.visible = true;
+					}
+				} else {
+					inputObj = obj;
+					if(obj.type != 'other' && obj.isBound != 1){
+						if(obj.type == 'controller'){
+//							type2.text = "类型：智能管理主机";
+							type2.text = ResourceManager.getInstance().getString("ViewerStrings","T00241");
+							controllerIp2.text = "ip：" + obj.controllerIp ;
+							comp2 = obj.controllerIp;
+							buildCode2Rb.enabled = true;
+							buildCode2Rb.visible = true;
+						}else if(obj.type == 'collector'){
+//							type2.text = "类型：扫描仪";
+							type2.text = ResourceManager.getInstance().getString("ViewerStrings","T00242");
+//							controllerIp2.text = "扫描仪序号：" + obj.scannerSeqNo;
+							controllerIp2.text = ResourceManager.getInstance().getString("ViewerStrings","C00015") + obj.scannerSeqNo;
+							comp2 = obj.scannerSeqNo;
+							buildCode2Rb.visible = false;
+						}else if(obj.type == 'shelf'){
+//							type2.text = "类型：配线架";
+							type2.text = ResourceManager.getInstance().getString("ViewerStrings","T00243");
+//							controllerIp2.text = "配线架序号：" + obj.mngPort;
+							controllerIp2.text = ResourceManager.getInstance().getString("ViewerStrings","C00019") + obj.mngPort;
+							comp2 = obj.mngPort;
+							buildCode2Rb.visible = false;
+						}
+//						name2.text = "名称：" + obj.assetsName;
+						name2.text = ResourceManager.getInstance().getString("ViewerStrings","T00134") + obj.assetsName;
+						name2Rb.value = obj.assetsName == ""? -1:0;
+						buildCode2Rb.value = obj.buildingCode == ""?-1:0;
+//						buildCode2.text = '建筑编号：' + obj.buildingCode;
+						buildCode2.text = ResourceManager.getInstance().getString("ViewerStrings","T00244") + obj.buildingCode;
+						comp4 = obj.buildingCode;
+						cabinet2Rb.value = obj.cabinetCode == ""? -1:0 ; //机柜编号
+//						cabinet2.text = "机柜ID：" + obj.cabinetCode ; 
+						cabinet2.text = ResourceManager.getInstance().getString("ViewerStrings","C00012") + obj.cabinetCode ; 
+						uNo2Rb.value = obj.uNo == 0?-1:obj.uNo ;
+//						uNo2.text = "所在U层：" ;
+						uNo2.text = ResourceManager.getInstance().getString("ViewerStrings","C00013") ;
+						if (obj.uNo == 0){
+							uNo2.text += "";
+						} else {
+							uNo2.text += obj.uNo + 'U';
+						}
+						vGroup2.visible = true;
+					}
+				}
+				
+				if (name1Rb.value == -1 || name2Rb.value == -1){
+					//如果名称 有一个为空的话
+					name1Rb.value == 0 ? name1Rb.selected = true : name2Rb.selected = true;
+				}
+				if (buildCode1Rb.value == -1 || buildCode2Rb.value == -1){
+					buildCode1Rb.value == 0 ? buildCode1Rb.selected = true : buildCode2Rb.selected = true;
+				}
+				if (cabinet1Rb.value == -1 || cabinet2Rb.value == -1){
+					cabinet1Rb.value == 0 ? cabinet1Rb.selected = true : cabinet2Rb.selected = true;
+				}
+				if (uNo1Rb.value == -1 || uNo2Rb.value == -1){
+					if (uNo1Rb.value == -1) {
+						uNo2Rb.selected = true;
+					}
+				}
+				
+				if(comp1 != comp2){
+					//控制器 只需判断IP 如果不同 则变红
+					controllerIp2.setStyle("color","red");
+				}else{
+					controllerIp2.setStyle("color","white");
+				}
+				if(obj.type == "collector" || obj.type == "shelf"){
+					//需要判断扫描仪序号，建筑编号
+					if(comp3 != comp4){
+						buildCode2.setStyle("color","red");
+					}else{
+						buildCode2.setStyle("color","white");
+					}
+				}else{
+					buildCode2.setStyle("color","white");
+				}
+			}
+			
+			private function bind():void{
+				if(cabinetRb.selectedValue == null || uNoRb.selectedValue == null || buildCodeRb.selectedValue == null){
+//					Alert.show("请选择您要绑定的数据！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00104"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				
+				if(uNoRb.selectedValue == -1 || buildCodeRb.selectedValue == -1 || cabinetRb.selectedValue == -1 || nameRb.selectedValue == -1){
+//					Alert.show("选择绑定的数据不能为空！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				
+				if(scanObj.parent == 'no'){
+//					Alert.show("请从上层设备开始进行绑定！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00105"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+			 	var pattern : RegExp = /^[1-9]\d+$/;
+				if(pattern.test(uNoRb.selectedValue.toString()) == 'false'){
+//					Alert.show("您选择的U层开头不能为零，且必须是数字！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00106"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				
+				//点击绑定，判断他们的设备类型是否相同，同一个控制器，他有不同的类型，采集器，配线架同理。
+				var assetsId : int = int(scanObj.assetsId);
+				if(assetsId != 0){
+					if(scanObj.assetsId != inputObj.assetsId){
+//						Alert.show("您所绑定的设备产品类型不相同！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00107"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+				}
+				if(scanObj && inputObj && scanObj.type == inputObj.type){
+					//绑定控制器
+					var obj : Array = new Array();
+					
+					obj["type1"] = inputObj.type + ""; 
+					
+					obj["type2"] = scanObj.type + "";  
+					
+					obj["equipmentId"] = inputObj.id + ""; //设备ID 
+					
+					if(cabinet1Rb.selected){
+						obj["cabinetCode"] = scanObj.cabinetCode + "";
+					}else{
+						obj["cabinetCode"] = inputObj.cabinetCode + "";
+					}
+					
+					obj["collectorCode"] = inputObj.collectorCode + "";
+					
+					obj["controllerIp"] = scanObj.controllerIp + "";
+					
+					obj["collectorSeqNo"] = scanObj.collectorSeqNo + "";
+					
+					obj["shelfSeqNo"] = scanObj.shelfSeqNo + "";
+					//网关ID 网关IP 网关端口
+					obj["gatewayId"] = scanObj.gatewayId + "";
+					obj["gatewayIp"] = scanObj.gatewayIp + "";
+					obj["gatewayPort"] = scanObj.gatewayPort + "";
+					
+					obj["collectorCode"] = scanObj.collectorCode + "";	
+					obj["uHoldCount"] = inputObj.uHoldCount + "";
+					
+					if(uNo1Rb.selected){
+						obj["uNo"] = scanObj.uNo + "";
+					}else{
+						obj["uNo"] = inputObj.uNo + "";
+					}
+					
+					if(buildCode1Rb.selected){
+						obj["buildingCode"] = scanObj.buildingCode + "";
+					}else{
+						obj["buildingCode"] = inputObj.buildingCode + "";
+					}
+					obj["assetsId"] = inputObj.assetsId + "";
+					obj["gatewayMac"] = scanObj.gatewayMac + "" ;
+					obj["collectorCabinetId"] = scanObj.cabinetId + "";
+					gatewayId = scanObj.gatewayId;
+					controllerIp = scanObj.controllerIp;
+					var cabinetId : int = inputObj.cabinetId;
+					HashTableManager.instance.put("cabinetId",cabinetId);
+					initTree.eqmtId = inputObj.cabinetId;
+					initTree.buildingId = inputObj.buildingId;
+					//刷新维护树形图属性
+					if(scanObj.type == 'controller'){
+						//网关ID  控制器ID
+						mainTree.parentId = scanObj.gatewayId;
+					}else if(scanObj.type == 'collector'){
+						mainTree.parentId = scanObj.gatewayId;
+						mainTree.parentId1 = scanObj.parentEquipmentId;
+					}else {
+						mainTree.parentId = scanObj.gatewayId;
+						mainTree.parentId1 = scanObj.controllerId;
+						mainTree.parentId2 = scanObj.collectorId;
+					}
+					remote.bound(obj);
+				}	
+			}
+			
+			private function boundResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == -1){
+//					Alert.show("建筑编号错误","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00064"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -2){
+//					Alert.show("建筑内找不到机柜","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00065"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -3){
+//					Alert.show("U层格式不正确","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00066"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -4){
+//					Alert.show("U层已经被占用","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00067"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -5){
+//					Alert.show("只能在未绑定的状态下可以进行绑定操作","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00068"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -6 || i == -7){
+//					Alert.show("绑定失败","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00013"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -8){
+//					Alert.show("绑定的类型必须一致","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00069"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -9){
+//					Alert.show("所绑定的配线架和扫描仪不在同一个机柜下","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00070"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == 1){
+					timer.addEventListener(TimerEvent.TIMER,timerHandler);
+					timer.start();
+					CommonUtil.startLoading(0,20);
+					cancel();
+				}
+				initTree.initBtn();
+			}
+			
+			private function timerHandler(event:TimerEvent):void{
+				timer.stop();
+				CommonUtil.stopLoading();
+//				Alert.show("绑定失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00071"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				//发送网关....
+				if(scanObj.type == 'controller'){
+					remote.modifyControllerBoundState(int(inputObj.id),gatewayId,controllerIp);
+				}
+				var obj : Object = { arr :[EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],EventType.REFRESH_ID[8]]}
+				AppEvent.dispatch(EventType.REFRESH,obj);
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+			private function cancel():void{
+				PopUpManager.removePopUp(this);
+				vGroup1.visible = false;
+				vGroup2.visible = false;
+			}
+			
+		]]>
+	</fx:Script>
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<s:Group left="5" right="5" top="5" bottom="5">
+		<s:layout>
+			<s:VerticalLayout/>
+		</s:layout>
+		<s:HGroup width="100%" height="85%">
+			<s:VGroup width="50%" height="100%" >
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00245')}" color="yellow" width="100%" height="15%" textAlign="center" verticalAlign="middle" fontWeight="bold"/>
+				<s:Group  width="100%" height="85%" >
+					<s:Rect width="100%" height="100%" radiusX="5" radiusY="5">
+						<s:stroke>
+							<s:SolidColorStroke color="#696969" weight="2" />
+						</s:stroke>
+					</s:Rect>
+					<s:VGroup id="vGroup1" width="100%" height="100%" paddingLeft="15" visible="false">
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="type1Rb" width="10%" height="100%" groupName="typeRb" selected="true"/>
+							<s:Label id="type1" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="controllerIp1Rb" width="10%" height="100%" groupName="ipRb" selected="true"/>
+							<s:Label id="controllerIp1" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="buildCode1Rb" width="10%" height="100%" groupName="buildCodeRb" />
+							<s:Label id="buildCode1" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="name1Rb" width="10%" height="100%" groupName="nameRb"/>
+							<s:Label id="name1" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="cabinet1Rb" width="10%" height="100%" groupName="cabinetRb" />
+							<s:Label id="cabinet1" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="uNo1Rb" width="10%" height="100%" groupName="uNoRb" />
+							<s:Label id="uNo1" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+					</s:VGroup>
+				</s:Group>
+			</s:VGroup>
+			
+			<s:VGroup width="50%" height="100%">
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00246')}" color="yellow" width="100%" height="15%" fontWeight="bold" textAlign="center" verticalAlign="middle"/>
+				<s:Group  width="100%" height="85%" >
+					<s:Rect width="100%" height="100%" radiusX="5" radiusY="5">
+						<s:stroke>
+							<s:SolidColorStroke color="#696969" weight="2" />
+						</s:stroke>
+					</s:Rect>
+					<s:VGroup id="vGroup2" width="100%" height="100%" paddingLeft="15" visible="false">
+						<s:HGroup width="100%" height="17%">
+							<s:Label width="10%"/>
+							<s:Label id="type2" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:Label width="10%"/>
+							<s:Label id="controllerIp2" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="buildCode2Rb" width="10%" height="100%" groupName="buildCodeRb" visible="false" />
+							<s:Label id="buildCode2" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="name2Rb" width="10%" height="100%" groupName="nameRb"/>
+							<s:Label id="name2" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="cabinet2Rb" width="10%" height="100%" groupName="cabinetRb" />
+							<s:Label id="cabinet2" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+						
+						<s:HGroup width="100%" height="17%">
+							<s:RadioButton id="uNo2Rb" width="10%" height="100%" groupName="uNoRb"/>
+							<s:Label id="uNo2" width="90%" height="100%" styleName="myStyle"/>
+						</s:HGroup>
+					</s:VGroup>
+				</s:Group>
+			</s:VGroup>
+		</s:HGroup>
+		
+		<s:HGroup width="100%" height="15%" verticalAlign="middle" horizontalAlign="center">
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="bind()"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+		</s:HGroup>
+	</s:Group>
+</gokei:TitleWindowX>

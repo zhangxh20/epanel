@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:ItemRenderer xmlns:fx="http://ns.adobe.com/mxml/2009"
+				xmlns:s="library://ns.adobe.com/flex/spark"
+				xmlns:mx="library://ns.adobe.com/flex/mx"
+				width="100%" height="40">
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			//Document的类型
+			private var type : int ;
+			private var _id : int ; 
+			private var nameShow : String;
+			
+			override public function set data(value : Object):void{
+				super.data = value;
+				this.type = value.type;
+				this._id = value.id;
+				this.nameShow = fileName.text = value.nameShow;
+				
+				if(type == 0){
+					//图片
+					image.source="assets/images/file.png";
+				}else if(type == 1){
+					//文档
+					image.source="assets/images/image.png";
+				}else{
+					//文件夹
+					image.source="assets/images/folder.png";
+				}
+			}
+			
+			private function nameClick():void{
+				if(type == 0 || type == 1){
+					//浏览
+				}else{
+					//进入文件夹
+					var obj : Object = new Object();
+					obj._id = _id;
+					AppEvent.dispatch(EventType.DOUBLE_CLICK,obj);
+				}
+			}
+		]]>
+	</fx:Script>
+
+	<s:HGroup width="100%" height="100%">
+		<s:HGroup width="70%" height="100%" paddingLeft="20" verticalAlign="middle">
+			<s:Image id="image" width="40" height="40" buttonMode="true" click="nameClick()"/>
+			<s:Label id="fileName" width="40%" textAlign="center"/>
+		</s:HGroup>
+	</s:HGroup>
+
+</s:ItemRenderer>

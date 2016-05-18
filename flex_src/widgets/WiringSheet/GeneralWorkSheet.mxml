@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   xmlns:gokei="com.gokei.components.*" 
+			   title="{ResourceManager.getInstance().getString('ViewerStrings','T00308')}" width="300" height="160"
+			   close="closeTitleWindow()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="userService" fault="onFault(event)">
+			<s:method name="getAllUsers" result="getAllUsersResult(event)" />
+		</s:RemoteObject>
+		<s:RemoteObject id="wssRemote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="makeWorkSheet" result="makeWorkSheetResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.WiringSheet.pageContent.WiringSheetDataGrid;
+			
+			[Bindable]
+			private var allUsers:ArrayCollection;
+			private var _workSheetId:Array;
+			private var _wsw:WiringSheetDataGrid;
+			
+			public function closeTitleWindow():void{
+				operator.selectedIndex = -1;
+				PopUpManager.removePopUp(this);
+			}
+			
+			public function init():void{
+				remote.getAllUsers();
+				allUsers = new ArrayCollection([]);
+//				allUsers.addItemAt( {name:"全部人员",userId:"-1"},0);
+				allUsers.addItemAt( {name:ResourceManager.getInstance().getString("ViewerStrings","T00309"),userId:"-1"},0);
+			}
+			public function getAllUsersResult(event:ResultEvent):void{
+				 var _allUsers : ArrayCollection = event.result as ArrayCollection;
+				 for(var i : int = 0 ; i < _allUsers.length ; i++){
+					 allUsers.addItemAt(_allUsers[i],i+1);
+				 }
+			}
+			
+			public function makeWorkSheetResult(event:ResultEvent):void{
+				//结果  刷新 wiringSheetWidget、 workSheetWidget
+//				Alert.show("操作成功！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				var data : Object = { arr : [EventType.REFRESH_ID[5]] };
+				AppEvent.dispatch(EventType.REFRESH,data);
+				_wsw.checkBoxColunm.cloumsSelected = false;
+				_wsw.judgeRemote(1);
+				closeTitleWindow();
+				if(_wsw.butGroup1.checkBox.selected == true){
+					//刷新机柜
+					AppEvent.dispatch(EventType.CABINET_REFRESH,_wsw.butGroup1.cabinetIds);
+				}
+				AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+			}
+			/**
+			 * 确定 生成工作单
+			 * */
+			public function makeWorkSheet():void{
+				if(operator.selectedItem!= null){
+					var operatorName:String;
+					if (operator.selectedItem.userId == -1){
+						operatorName = null;
+					} else {
+						operatorName = operator.selectedItem.name;
+					}
+				}else{
+//					Alert.show("请选择完成工作单的人员！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00135"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				wssRemote.makeWorkSheet(_workSheetId,operatorName);
+			}
+			
+			public function set workSheetId(value:Array):void{
+				this._workSheetId = value;
+			}
+			public function set wsDataGrid(value:WiringSheetDataGrid):void{
+				this._wsw = value;
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	
+	<s:Group left="10" right="10" top="10" bottom="10">
+		<s:Form>
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00310')}">
+				<s:DropDownList id="operator" dataProvider="{allUsers}" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" width="150"/>
+			</s:FormItem>
+			
+			<s:FormItem>
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="makeWorkSheet()"/>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="closeTitleWindow()"/>
+			</s:FormItem>
+		</s:Form>
+	</s:Group> 
+</gokei:TitleWindowX>

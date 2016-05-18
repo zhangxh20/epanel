@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*" preinitialize="preinitializeHandler(event)" creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="chartService" fault="onFault(event)">
+			<s:method name="getChartsInfo" result="getChartsInfoResult(event)" />
+		</s:RemoteObject>
+		<s:SolidColor id="scs1" color="0xfe6060" />
+		<s:SolidColor id="scs2" color="0x00a1dd" />
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.charts.HitData;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.FlexEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			private function preinitializeHandler(event:FlexEvent):void
+			{
+				// work-around for 4.6 regression
+				copyStyleFromParent("mx.charts.chartClasses.ChartBase");
+				copyStyleFromParent("mx.charts.chartClasses.CartesianChart");
+				copyStyleFromParent("mx.charts.chartClasses.PolarChart");
+				copyStyleFromParent("mx.charts.BarChart");
+				copyStyleFromParent("mx.charts.ColumnChart");
+				copyStyleFromParent("mx.charts.LineChart");
+				copyStyleFromParent("mx.charts.PieChart");
+				copyStyleFromParent("mx.charts.AxisRenderer");
+				copyStyleFromParent(".blockCategoryAxis");
+				copyStyleFromParent(".blockNumericAxis");
+				copyStyleFromParent(".linedNumericAxis");
+				copyStyleFromParent(".dashedNumericAxis");
+				copyStyleFromParent(".dashedCategoryAxis");
+				copyStyleFromParent(".hangingCategoryAxis");
+				copyStyleFromParent("mx.charts.GridLines");
+				copyStyleFromParent(".horizontalGridLines");
+				copyStyleFromParent("mx.charts.series.BarSeries");
+				copyStyleFromParent("mx.charts.series.ColumnSeries");
+				copyStyleFromParent("mx.charts.series.LineSeries");
+				copyStyleFromParent("mx.charts.series.PieSeries");
+			}
+			private function copyStyleFromParent(selector:String):void
+			{
+				var chartBaseStyle:CSSStyleDeclaration = styleManager.getStyleDeclaration(selector);
+				if (!chartBaseStyle && styleManager.parent)
+				{
+					var parentStyle:CSSStyleDeclaration = styleManager.parent.getStyleDeclaration(selector);
+					if (parentStyle)
+					{
+						styleManager.setStyleDeclaration(selector, parentStyle, false);
+					}
+				}
+			}
+			
+			private function init():void {
+				remote.getChartsInfo();
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event:AppEvent):void {
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[13] == item) {
+						remote.getChartsInfo();
+						break;
+					}
+				}
+			}
+			
+			private function getChartsInfoResult(event:ResultEvent):void {
+				var map:Object = event.result;
+				alarmChart.dataProvider = map['warningChart'];
+				worksheetChart.dataProvider = map['worksheetChart'];
+				nePortChart.dataProvider = mapToArray(map['nePortChart']);
+				shelfPortChart.dataProvider = mapToArray(map['shelfPortChart']);
+				portChart.dataProvider = mapToArray(map['portChart']);
+				uNoChart.dataProvider = mapToArray(map['uNoChart']);
+			}
+			
+			private function mapToArray(map:Object):ArrayCollection {
+				var list:ArrayCollection = new ArrayCollection([]);
+				var obj:Object = new Object();
+				obj.type = 0;
+				obj.count = map['countInUse'];
+				list.addItem(obj);
+				obj = new Object();
+				obj.type = 1;
+				obj.count = map['count'] -  map['countInUse'];
+				list.addItem(obj);
+				return list;
+			}
+			
+			private function showLabel(data:Object, field:String, index:Number, percentValue:Number):String {
+				var temp:String= (Math.round(percentValue * 100)/100).toString();
+				var str:String = "";
+				if (data.type == 0) {
+//					str += "已使用\n" + data.count + "个\n" +  temp + "%";
+					str += ResourceManager.getInstance().getString("ViewerStrings","T00221") + data.count + "个\n" +  temp + "%";
+				} else {
+//					str += "未使用\n" + data.count + "个\n" +  temp + "%";
+					str += ResourceManager.getInstance().getString("ViewerStrings","T00222") + data.count + "个\n" +  temp + "%";
+				}
+				return str;
+			}
+			
+			private function showLabelX(data:Object, field:String, index:Number, percentValue:Number):String {
+				var temp:String= (Math.round(percentValue * 100)/100).toString();
+				var str:String = "";
+				if (data.type == 0) {
+//					str += "已使用\n" + data.count + "U\n" +  temp + "%";
+					str += ResourceManager.getInstance().getString("ViewerStrings","T00221") + data.count + "U\n" +  temp + "%";
+				} else {
+//					str += "未使用\n" + data.count + "U\n" +  temp + "%";
+					str += ResourceManager.getInstance().getString("ViewerStrings","T00222") + data.count + "U\n" +  temp + "%";
+				}
+				return str;
+			}
+			
+			private function labfunc(hitData:HitData):String{
+//				return hitData.item.month + "\n数量:" + hitData.item.count;
+				return hitData.item.month + ResourceManager.getInstance().getString("ViewerStrings","T00223") + hitData.item.count;
+			}
+
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<viewer:WidgetTemplate width="1200" height="600">
+		<s:BorderContainer id="bc" width="100%" height="100%" backgroundAlpha="0" borderStyle="solid" borderColor="0x000000">
+			<s:layout>
+				<s:VerticalLayout />
+			</s:layout>
+			<s:HGroup height="50%" width="100%">
+				<mx:ColumnChart id="alarmChart" width="50%" height="100%" fontSize="12" showDataTips="true" dataTipFunction="labfunc">
+					<mx:horizontalAxis>
+						<mx:CategoryAxis categoryField="month" title="{ResourceManager.getInstance().getString('ViewerStrings','T00224')}"/>
+					</mx:horizontalAxis>
+					<mx:series>
+						<mx:ColumnSeries displayName="{ResourceManager.getInstance().getString('ViewerStrings','T00225')}" xField="month" yField="count" fill="{scs1}" />
+					</mx:series>
+				</mx:ColumnChart>
+				<s:Label  width="25"/>
+				<mx:ColumnChart id="worksheetChart" width="50%" height="100%" fontSize="12" showDataTips="true" dataTipFunction="labfunc">
+					<mx:horizontalAxis>
+						<mx:CategoryAxis categoryField="month" title="{ResourceManager.getInstance().getString('ViewerStrings','T00226')}"/>
+					</mx:horizontalAxis>
+					<mx:series>
+						<mx:ColumnSeries displayName="{ResourceManager.getInstance().getString('ViewerStrings','T00225')}" xField="month" yField="count" fill="{scs2}"/>
+					</mx:series>
+				</mx:ColumnChart>
+			</s:HGroup>
+			<s:HGroup height="40%" width="100%">
+				<mx:PieChart id="nePortChart" width="25%" height="100%" fontSize="12">
+					<mx:series>
+						<mx:PieSeries field="count" labelFunction="showLabel" labelPosition="inside" fills="{[scs1,scs2]}"/>
+					</mx:series>
+				</mx:PieChart>
+				<mx:PieChart id="shelfPortChart" width="25%" height="100%" fontSize="12">
+					<mx:series>
+						<mx:PieSeries field="count" labelFunction="showLabel" labelPosition="inside" fills="{[scs1,scs2]}"/>
+					</mx:series>
+				</mx:PieChart>
+				<mx:PieChart id="portChart" width="25%" height="100%" fontSize="12">
+					<mx:series>
+						<mx:PieSeries field="count" labelFunction="showLabel" labelPosition="inside" fills="{[scs1,scs2]}"/>
+					</mx:series>
+				</mx:PieChart>
+				<mx:PieChart id="uNoChart" width="25%" height="100%" fontSize="12">
+					<mx:series>
+						<mx:PieSeries field="count" labelFunction="showLabelX" labelPosition="inside" fills="{[scs1,scs2]}"/>
+					</mx:series>
+				</mx:PieChart>
+			</s:HGroup>
+			<s:HGroup height="10" width="100%">
+				<s:Label width="25%" text="{ResourceManager.getInstance().getString('ViewerStrings','T00227')}" textAlign="center"/>
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00228')}" width="25%" textAlign="center"/>
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00229')}" width="25%" textAlign="center"/>
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00230')}" width="25%" textAlign="center"/>
+			</s:HGroup>
+		</s:BorderContainer>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>
+

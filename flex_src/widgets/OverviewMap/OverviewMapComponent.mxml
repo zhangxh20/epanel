@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2010-2011 Esri. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//    http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///////////////////////////////////////////////////////////////////////////
+-->
+<s:SkinnableContainer xmlns:fx="http://ns.adobe.com/mxml/2009"
+                      xmlns:s="library://ns.adobe.com/flex/spark"
+                      xmlns:mx="library://ns.adobe.com/flex/mx"
+                      xmlns:esri="http://www.esri.com/2008/ags"
+                      creationComplete="init()">
+    <!-- this component is used by the OverviewMapWidget -->
+    <fx:Script>
+        <![CDATA[
+			import com.esri.ags.Graphic;
+			import com.esri.ags.Map;
+			import com.esri.ags.events.ExtentEvent;
+			import com.esri.ags.events.MapEvent;
+			import com.esri.ags.geometry.Extent;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.symbols.SimpleFillSymbol;
+			import com.esri.ags.symbols.SimpleLineSymbol;
+			import com.esri.ags.virtualearth.VETiledLayer;
+			import com.esri.viewer.AppEvent;
+			import com.esri.viewer.ConfigData;
+			import com.esri.viewer.ViewerContainer;
+			
+			import mx.collections.ArrayCollection;
+			import mx.core.FlexGlobals;
+			import mx.events.EffectEvent;
+
+
+            private const lineSym:SimpleLineSymbol = new SimpleLineSymbol("solid", 0xFF0000, 0.7, 2);
+            private const currentExtentSym:SimpleFillSymbol = new SimpleFillSymbol("solid", 0xFF0000, 0.2, lineSym);
+
+            [Bindable]
+            public var map:Map;
+            public var configData:ConfigData;
+            public var openDefaultToolTip:String;
+            public var closeDefaultToolTip:String;
+
+            private var proxyUrl:String;
+        
+            private var useBaseMapLayer:Boolean;
+            private var baseMapSwitched:Boolean;
+            private var currentBaseMapId:String;
+            private var hasOverviewGraphicBeenMoved:Boolean = false;
+            private var xOffset:Number;
+            private var yOffset:Number;
+
+            [Bindable]
+            private var openToolTip:String;
+            [Bindable]
+            private var closeToolTip:String;
+
+            private function init():void
+            {
+
+                toggleIcon.addEventListener(MouseEvent.CLICK, toggleIcon_clickHandler);
+                viewBox.setStyle("backgroundColor", FlexGlobals.topLevelApplication.getStyle("backgroundColor"));
+            }
+
+            private function toggleIcon_clickHandler(event:MouseEvent):void
+            {
+                currentState = (currentState == "collapsed") ? "expanded" : "collapsed";
+            }
+
+            private var _configXML:XML;
+
+            public function set expansionDirection(direction:String):void
+            {
+                switch (direction)
+                {
+                    case ExpansionDirection.UP_RIGHT:
+                    {
+                        toggleIcon.rotation = 90;
+                        toggleIcon.left = toggleIcon.bottom = iconMask.left = iconMask.bottom = null;
+                        toggleIcon.right = toggleIcon.top = iconMask.right = iconMask.top = 0;
+                        break;
+                    }
+                    case ExpansionDirection.DOWN_RIGHT:
+                    {
+                        toggleIcon.rotation = 180;
+                        toggleIcon.left = toggleIcon.top = iconMask.left = iconMask.top = null;
+                        toggleIcon.right = toggleIcon.bottom = iconMask.right = iconMask.bottom = 0;
+                        break;
+                    }
+                    case ExpansionDirection.DOWN_LEFT:
+                    {
+                        toggleIcon.rotation = 270;
+                        toggleIcon.right = toggleIcon.top = iconMask.right = iconMask.top = null;
+                        toggleIcon.left = toggleIcon.bottom = iconMask.left = iconMask.bottom = 0;
+                        break;
+                    }
+                }
+            }
+
+            public function get configXML():XML
+            {
+                return _configXML;
+            }
+
+            public function set configXML(value:XML):void
+            {
+                _configXML = value;
+
+
+            }
+
+            private function sequence_effectStartHandler(event:EffectEvent):void
+            {
+                if (currentState == "expanded")
+                {
+                   
+                }
+            }
+
+            private function sequence_effectEndHandler(event:EffectEvent):void
+            {
+                
+            }
+        ]]>
+    </fx:Script>
+
+    <s:states>
+        <s:State name="collapsed"/>
+        <s:State name="expanded"/>
+    </s:states>
+
+    <s:transitions>
+        <s:Transition fromState="*" toState="*">
+            <s:Sequence effectEnd="sequence_effectEndHandler(event)" effectStart="sequence_effectStartHandler(event)">
+                <s:Resize duration="800" target="{viewBox}"/>
+                <s:Rotate angleBy="180"
+                          autoCenterTransform="true"
+                          duration="300"
+                          target="{toggleIcon}"/>
+            </s:Sequence>
+        </s:Transition>
+    </s:transitions>
+
+    <s:BorderContainer id="viewBox"
+                       width.collapsed="{toggleIcon.width}" width.expanded="250" height.collapsed="{toggleIcon.height}" height.expanded="250"
+                       backgroundAlpha="1.0">
+        <s:VGroup mask="{mapMask}" color="0x000000" x="23" y="30">
+			
+		</s:VGroup>
+        <s:BorderContainer id="mapMask"
+                           width="{viewBox.width}" height="{viewBox.height}"/>
+        <s:Group width="{viewBox.width}" height="{viewBox.height}">
+			
+            <mx:Image id="toggleIcon"
+                      width="23" height="23"
+                      buttonMode="true"
+                      mask="{iconMask}"
+                      smoothBitmapContent="true"
+                      source="assets/images/i_expand2.png"
+                      toolTip.collapsed="{openToolTip}"
+                      toolTip.expanded="{closeToolTip}"
+                      useHandCursor="true"/>
+            <s:BorderContainer id="iconMask" 
+                               width="{toggleIcon.width}" height="{toggleIcon.height}"/>
+        </s:Group>
+
+    </s:BorderContainer>
+    <s:Rect left="-1" right="-1" top="-1" bottom="-1">
+        <s:stroke>
+            <s:SolidColorStroke color="{getStyle('contentBackgroundColor')}" weight="1"/>
+        </s:stroke>
+    </s:Rect>
+    <s:Rect left="-5" right="-5" top="-5" bottom="-5">
+        <s:stroke>
+            <s:SolidColorStroke color="{getStyle('color')}" weight="2"/>
+        </s:stroke>
+    </s:Rect>
+</s:SkinnableContainer>

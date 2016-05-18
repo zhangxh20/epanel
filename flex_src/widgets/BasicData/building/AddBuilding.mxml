@@ -1,0 +1,305 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:comboVaidator="widgets.UserSetting.*"
+		 creationComplete="init()">
+
+	<fx:Declarations>
+		<s:RemoteObject id="otsRemote" destination="objectTypeService" fault="onFault(event)">
+			<s:method name="getJZObjectTypes" result="getJZObjectTypesResulut(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject  id="bsRemote" destination="buildingService" fault="onFault(event)">
+			<s:method name="addBuilding" result="addBuildingResult(event)"/>
+			<s:method name="getBuildingById" result="getBuildingByIdResult(event)"/>
+			<s:method name="modifyBuilding" result="modifyBuildingResult(event)"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1" property="text" required="true" source="{name1}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<comboVaidator:ComboValidator id="v2"  property="selectedItem" source="{jzType}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+		<mx:StringValidator id="v3" property="text" source="{code}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:DateValidator id="v4" source="{year}" property="text" inputFormat="YYYY-MM-DD"  required="false"
+						  wrongDayError=""
+						  wrongMonthError=""
+						  wrongYearError=""
+						  wrongLengthError=""
+						  invalidCharError=""
+						  />
+	</fx:Declarations>
+	
+	<s:states>
+		<s:State name="add"/>
+		<s:State name="edit"/>
+	</s:states>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.managers.SwitchManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			import widgets.BasicData.entitys.Building;
+			public var buildingViewStack:BuildingViewStack;	
+			
+			[Bindable]
+			private var jZObjectTypes:ArrayCollection;
+			private var validerror:Array;
+			private var building:Building = new Building();
+			private var i:int;
+			private var companyId:int = HashTableManager.instance.get("companyId") as int;
+			private var buildingId : int ;
+
+			protected function init():void{
+				otsRemote.getJZObjectTypes();
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				validerror = new Array();
+				validerror.push(v1);
+				validerror.push(v2);
+				validerror.push(v3);
+				validerror.push(v4);
+			}
+			
+			private function refresh(event : AppEvent):void{
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[16] == item){
+						otsRemote.getJZObjectTypes();
+						break ;
+					}
+				}
+			}
+			
+			protected function getJZObjectTypesResulut(event:ResultEvent):void {
+				jZObjectTypes = event.result as ArrayCollection;
+				jzType.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				jzType.errorString = "";
+			}
+			protected function addBuildingResult(event:ResultEvent):void {
+				i = event.result as int;
+				if(i == 1){
+					cancel();
+					buildingViewStack.allBuild.init();
+					var data : Object = 
+						{
+							arr : [ 
+								EventType.REFRESH_ID[1],EventType.REFRESH_ID[3],EventType.REFRESH_ID[5],
+								EventType.REFRESH_ID[6],EventType.REFRESH_ID[8],EventType.REFRESH_ID[9],
+								EventType.REFRESH_ID[2],EventType.REFRESH_ID[4],EventType.REFRESH_ID[10],
+							],
+							obj : {buildingId : buildingId}
+						};
+					AppEvent.dispatch(EventType.REFRESH,data);
+//					Alert.show("添加成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == 0){
+//					Alert.show("添加失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00093"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else {
+//					Alert.show("建筑简称重复，请重新输入!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00021"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			protected function modifyBuildingResult(event:ResultEvent):void	{
+				i = event.result as int;
+				if(i == 1){
+					cancel();
+					buildingViewStack.allBuild.init();
+					var data : Object = 
+					{
+						arr : [ 
+							EventType.REFRESH_ID[1],EventType.REFRESH_ID[3],EventType.REFRESH_ID[5],
+							EventType.REFRESH_ID[6],EventType.REFRESH_ID[8],EventType.REFRESH_ID[9],
+							EventType.REFRESH_ID[2],EventType.REFRESH_ID[4],EventType.REFRESH_ID[10],
+					],
+						obj : {buildingId : buildingId}
+					};
+					AppEvent.dispatch(EventType.REFRESH,data);
+//					Alert.show("修改成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00053"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == 0){
+//					Alert.show("修改失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00094"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else {
+//					Alert.show("建筑简称重复，请重新输入!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00022"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			/**
+			 * 添加建筑
+			 * */
+			protected function addBuilding():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(validForm){
+					save();
+					bsRemote.addBuilding(building);
+				}
+			}
+			/**
+			* 编辑建筑
+			* */
+			private function editBuilding():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(validForm){
+					building.id = HashTableManager.instance.get("buildId") as int;
+					save();
+					bsRemote.modifyBuilding(building);
+				}
+			}
+			protected function cancel():void{
+				jzType.errorString = "";
+				code.text = "";
+				code.errorString = "";
+				layerNo.text = "";
+				name1.text = "";
+				address.text = "";
+				year.text = "";
+				buildCompany.text = "";
+				remark.text = "";
+				name1.errorString = "";
+				seqNo.text = "";
+				buildingViewStack.selectedChild = buildingViewStack.nav1;
+			}
+			private function save():void{
+				building.companyId = companyId;
+				building.typeId = jzType.selectedItem.id;
+				building.code = code.text;
+				if(layerNo.text == ""){
+					building.layerNo = -1;
+				}else{
+					building.layerNo = Number(layerNo.text);
+				}
+				building.name = name1.text;
+				building.address = address.text;
+				building.year = DateField.stringToDate(year.text,"YYYY-MM-DD");
+				building.buildCompany = buildCompany.text;
+				building.remark = remark.text;
+				building.seqNo = int(seqNo.text);
+			}
+			/**
+			 * 编辑建筑
+			 * @param buildId 建筑ID
+			 * */
+			public function getBuildingById(buildId:int):void{
+				bsRemote.getBuildingById(buildId);
+				this.buildingId = buildId;
+			}
+			private function getBuildingByIdResult(event:ResultEvent):void{
+				building = event.result as Building;
+				for(var i:int=0;i<jZObjectTypes.length;i++){
+					if(building.typeId == jZObjectTypes.getItemAt(i).id){
+						jzType.selectedIndex = i;
+						break;
+					}
+				}
+				name1.text = building.name;
+				code.text = building.code;
+				if(building.layerNo == -1){
+					layerNo.text = "";
+				}else{
+					layerNo.text  = String(building.layerNo);
+				}
+				name1.text = building.name;
+				address.text = building.address;
+				year.text  = DateField.dateToString(building.year,"YYYY-MM-DD");
+				buildCompany.text = building.buildCompany;
+				remark.text = building.remark;
+				if (building.seqNo == 0){
+					seqNo.text = "";
+				} else {
+					seqNo.text = building.seqNo.toString();
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Label id="label" color="yellow" x="0" />
+	<s:Group left="5" top="10" right="5" bottom="10" >
+		<s:HGroup>
+			<s:Form width="30%">
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" required="true" requiredIndicatorSource="assets/images/require.png" height="35">
+					<s:TextInput id="name1" width="150" maxChars="50"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','I00056')}" required="true" requiredIndicatorSource="assets/images/require.png" height="35">
+					<s:TextInput id="code" width="150" maxChars="50" restrict="A-Z a-z"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','I00057')}" height="35">
+					<s:TextInput id="seqNo" width="150" restrict="0-9" maxChars="10"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','I00058')}" height="35">
+					<s:TextInput id="address" width="150" maxChars="50"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','I00059')}" height="35">
+					<s:TextInput id="buildCompany" width="150" maxChars="50"/>
+				</s:FormItem>
+			</s:Form>
+			
+			<s:Form width="70%" textAlign="right">
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00040')}" textAlign="left" required="true" requiredIndicatorSource="assets/images/require.png" height="35">
+					<s:DropDownList width="150" id="jzType" dataProvider="{jZObjectTypes}" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00042')}" textAlign="left" height="35">
+					<s:TextInput id="layerNo" width="150" restrict="1-99999999" maxChars="8"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','I00060')}" textAlign="left" height="35">
+					<mx:DateField id="year" width="150" formatString="YYYY-MM-DD" yearNavigationEnabled="true" editable="true"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" height="35">
+					<s:TextInput id="remark" width="150" textAlign="left" maxChars="200"/>
+				</s:FormItem>
+			</s:Form>
+		</s:HGroup>
+	</s:Group>
+	<s:FormItem x="220" y="220">
+		<s:layout>
+			<s:HorizontalLayout/>
+		</s:layout>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click.add="addBuilding()" click.edit="editBuilding()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="cancel()"/>
+	</s:FormItem>
+	
+
+</s:Group>

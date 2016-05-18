@@ -1,0 +1,526 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" 
+		 xmlns:supportClasses="com.esri.ags.skins.supportClasses.*"
+		 width="100%" height="100%" 
+		 >
+	<fx:Declarations>
+		<s:RemoteObject id="asRemote" destination="assetsService" fault="onFault(event)">
+			<s:method name="assetsInstalled" result="assetsInstalledResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.CabinetManager.productsComponent.AddProducts;
+			
+			public var dataArray:ArrayCollection;
+			
+			public var addPro:AddProducts;
+			
+			public var productObj:Object;//储存需要编辑的产品对象
+			//存储验证错误信息集合
+			public var validErrorArry:Array ;
+			
+			[Bindable]
+			private var editable:Boolean = true;
+			
+			public function bigTypeChangeRefresh(type:String):void {
+				editable = true;
+				switch(type) {
+					case "cabinet": {
+						viewstack.selectedIndex = 0;
+						break;
+					}
+					case "smartShelf": {
+						viewstack.selectedIndex = 1;
+						break;
+					}
+					case "shelf": {
+						viewstack.selectedIndex = 2;
+						break;
+					}
+					case "sysEqmt": {
+						viewstack.selectedIndex = 3;
+						break;
+					}
+					case "netEqmt": {
+						viewstack.selectedIndex = 4;
+						break;
+					}
+					case "other": {
+						viewstack.selectedIndex = 5;
+						break;
+					}
+					case "terminal" : {
+						viewstack.selectedIndex = 6;
+						break;
+					}
+						
+					default:
+					{
+						break;
+					}
+				}
+				setTimeout(function():void {
+					validatorMethod();
+				},200);
+			}
+			
+			public function resetForm():void{
+				if(productObj){
+					asRemote.assetsInstalled(productObj.id);
+				}
+				switch(viewstack.selectedIndex)
+				{
+					case 0: //机柜
+					{
+						if(productObj){
+							addPro.img = productObj.image;
+							name1.text = productObj.name;
+							model1.text =productObj.model;
+							uCount1.text=productObj.uCount;
+							brand1.text =productObj.brand;
+							remark1.text= productObj.remark;
+						}else{
+							addPro.img = "";
+							name1.text ="";
+							model1.text ="";
+							uCount1.text="";
+							brand1.text ="";
+							remark1.text="";
+							
+						}
+						//重置验证错误信息
+						name1.errorString = "";
+						uCount1.errorString = "";
+						break;
+					}
+					case 1: // 智能管理架
+					{
+						if(productObj){
+							addPro.img = productObj.image;
+							name2.text = productObj.name;
+							model2.text = productObj.model;
+							uHoldCount2.text = productObj.uHoldCount;
+							portCount2.text = productObj.portCount;
+							remark2.text= productObj.remark;
+							brand2.text = productObj.brand;
+						}else{
+							addPro.img = "";
+							name2.text ="";
+							model2.text ="";
+							portCount2.text ="";
+							remark2.text="";
+							brand2.text = "";
+						}
+						name2.errorString = "";
+						uHoldCount2.errorString = "";
+						portCount2.errorString ="";
+						break;
+					}
+					case 2: // 配线架
+					{
+						if(productObj){
+							addPro.img = productObj.image;
+							name3.text = productObj.name;
+							model3.text = productObj.model;
+							uHoldCount3.text= productObj.uHoldCount;
+							portCount3.text = productObj.portCount;
+							remark3.text= productObj.remark;
+							brand3.text = productObj.brand;
+						}else{
+							addPro.img = "";
+							name3.text = "";
+							model3.text = "";
+							uHoldCount3.text = "";
+							portCount3.text = "";
+							remark3.text="";
+							brand3.text = "";
+						}
+						name3.errorString = "";
+						uHoldCount3.errorString = "";
+						portCount3.errorString = "";
+						break;
+					}
+					case 3: // 系统设备
+					{
+						if(productObj){
+							addPro.img = productObj.image;
+							name4.text = productObj.name;
+							brand4.text = productObj.brand;
+							remark4.text= productObj.remark;
+							model4.text = productObj.model;
+							uHoldCount4.text = productObj.uHoldCount;
+						}else{
+							addPro.img = "";
+							name4.text ="";
+							uHoldCount4.text="";
+							brand4.text ="";
+							remark4.text="";
+							model4.text = "";
+						}
+						name4.errorString = "";
+						uHoldCount4.errorString = "";
+						break;
+					}
+					case 4: // 网络设备
+					{
+						if(productObj){
+							addPro.img = productObj.image;
+							name5.text = productObj.name;
+							model5.text = productObj.model;
+							uHoldCount5.text= productObj.uHoldCount;
+							portCount5.text = productObj.portCount;
+							fportCount5.text = productObj.fportCount;
+							brand5.text = productObj.brand;
+							remark5.text= productObj.remark;
+						}else{
+							addPro.img = "";
+							name5.text ="";
+							model5.text ="";
+							uHoldCount5.text="";
+							brand5.text ="";
+							remark5.text="";
+							portCount5.text = "";
+							fportCount5.text = "";
+						}
+						name5.errorString = "";
+						uHoldCount5.errorString = "";
+						portCount5.errorString = "";
+						fportCount5.errorString = "";
+						break;
+					}
+					case 5 : // 其他设备
+					{
+						if (productObj) {
+							addPro.img = productObj.image;
+							name6.text = productObj.name;
+							model6.text = productObj.model;
+							uHoldCount6.text= productObj.uHoldCount;
+							brand6.text = productObj.brand;
+							remark6.text= productObj.remark;
+						} else {
+							addPro.img = "";
+							name6.text = "";
+							model6.text = "";
+							uHoldCount6.text= "";
+							brand6.text = "";
+							remark6.text= "";
+						}
+						name6.errorString = "";
+						uHoldCount6.errorString = "";
+						break;
+					}
+					case 6 : //终端
+					{
+						if (productObj) {
+							addPro.img = productObj.image;
+							name7.text = productObj.name;
+							model7.text = productObj.model;
+							brand7.text = productObj.brand;
+							remark7.text= productObj.remark;
+						} else {
+							addPro.img = "";
+							name7.text = "";
+							model7.text = "";
+							brand7.text = "";
+							remark7.text= "";
+						}
+						name7.errorString = "";
+						break;
+					}
+					default:
+					{
+						break;
+					}
+				}
+			}
+			
+			/**
+			 * 初始输入验证
+			 */ 
+			protected function validatorMethod():void {
+				resetForm();
+				validErrorArry = new Array();
+				if(viewstack.selectedIndex == 0){
+					validErrorArry.push(v11);
+					validErrorArry.push(v12);
+				}else if(viewstack.selectedIndex == 1){
+					validErrorArry.push(v21);
+					validErrorArry.push(v22);
+					validErrorArry.push(v23);
+				}else if(viewstack.selectedIndex == 2){
+					validErrorArry.push(v31);
+					validErrorArry.push(v32);
+					validErrorArry.push(v33);
+				}else if(viewstack.selectedIndex == 3){
+					validErrorArry.push(v41);
+					validErrorArry.push(v42);
+				}else if(viewstack.selectedIndex == 4){
+					validErrorArry.push(v51);
+					validErrorArry.push(v52);
+					validErrorArry.push(v53);
+					validErrorArry.push(v54);
+				}else if(viewstack.selectedIndex == 5){
+					validErrorArry.push(v61);
+					validErrorArry.push(v62);
+				} else if (viewstack.selectedIndex == 6){
+					validErrorArry.push(v71);
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+			private function assetsInstalledResult(event:ResultEvent):void{
+				editable = !event.result;
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<mx:StringValidator id="v11" property="text" required="true" source="{name1}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:NumberValidator id="v12" property="text" required="true" source="{uCount1}" minValue="1" maxValue="99" allowNegative="false"
+							invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		
+		<mx:StringValidator id="v21" property="text" required="true" source="{name2}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:NumberValidator id="v22" property="text" required="true" source="{uHoldCount2}" minValue="1" maxValue="99" allowNegative="false"
+						invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		<mx:NumberValidator id="v23" property="text" required="true" source="{portCount2}" minValue="1" maxValue="999" allowNegative="false"
+						invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		
+		<mx:StringValidator id="v31" property="text" required="true" source="{name3}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:NumberValidator id="v32" property="text" required="true" source="{uHoldCount3}" minValue="1" maxValue="99" allowNegative="false"
+							invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		<mx:NumberValidator id="v33" property="text" required="true" source="{portCount3}" minValue="1" maxValue="999" allowNegative="false"
+							invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		
+		<mx:StringValidator id="v41" property="text" required="true" source="{name4}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:NumberValidator id="v42" property="text" required="true" source="{uHoldCount4}" minValue="1" maxValue="99" allowNegative="false"
+						 requiredFieldError="不为空" invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		
+		<mx:StringValidator id="v51" property="text" required="true" source="{name5}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:NumberValidator id="v52" property="text" required="true" source="{uHoldCount5}" minValue="1" maxValue="99" allowNegative="false"
+						 requiredFieldError="不为空" invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		<mx:NumberValidator id="v53" property="text" required="true" source="{portCount5}" maxValue="48" allowNegative="false"
+							requiredFieldError="不为空" invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}"/>
+		<mx:NumberValidator id="v54" property="text" required="true" source="{fportCount5}" maxValue="48" allowNegative="false"
+							requiredFieldError="不为空" invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		
+		<mx:StringValidator id="v61" property="text" required="true" source="{name6}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:NumberValidator id="v62" property="text" required="true" source="{uHoldCount6}" minValue="1" maxValue="99" allowNegative="false"
+						 requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}" invalidCharError="{ResourceManager.getInstance().getString('ViewerStrings','I00074')}" />
+		
+		<mx:StringValidator id="v71" property="text" required="true" source="{name7}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		
+	</fx:Declarations>
+	<mx:ViewStack id="viewstack" width="100%" height="100%" >
+		<s:NavigatorContent width="100%" height="100%" id="cabinetTab">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="180" id="name1" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}" required="true">
+						<s:TextInput width="120" id="brand1" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" required="true">
+						<s:TextArea id="remark1" width="260" height="80" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" required="true">
+						<s:TextInput width="200" id="model1" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00136')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="120" id="uCount1" maxChars="2" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent width="100%" height="100%" id="smartShelfTab">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="160" id="name2" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00137')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="100" id="uHoldCount2" maxChars="1" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}" >
+						<s:TextInput width="120" id="brand2" maxChars="50"/>
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" >
+						<s:TextInput width="200" id="model2" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00138')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="120" id="portCount2" restrict="0-9" maxChars="3" editable="{editable}"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" >
+						<s:TextArea width="200" id="remark2" height="80" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent width="100%" height="100%" id="shelfTab">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="160" id="name3" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00137')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="100" id="uHoldCount3" maxChars="1" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}">
+						<s:TextInput width="120" id="brand3" maxChars="50"/>	
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" >
+						<s:TextInput width="200" id="model3" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00138')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="120" id="portCount3" maxChars="3" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" >
+						<s:TextArea width="200" id="remark3" height="80" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent width="100%" height="100%" id="sysEqmt">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+						<s:TextInput width="180" id="name4" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}">
+						<s:TextInput width="120" id="brand4" maxChars="50"/>				
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" >
+						<s:TextArea width="260" height="80" id="remark4" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" >
+						<s:TextInput width="200" id="model4" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00137')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="100" id="uHoldCount4" maxChars="1" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent width="100%" height="100%" id="netEqmt">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+						<s:TextInput width="180" id="name5" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}" >
+						<s:TextInput width="120" id="brand5" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00139')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="120" id="portCount5" maxChars="3" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" >
+						<s:TextArea width="260" height="40" id="remark5" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" >
+						<s:TextInput width="200" id="model5" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00137')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="100" id="uHoldCount5" maxChars="2" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00140')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="100" id="fportCount5" maxChars="3" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent width="100%" height="100%" id="other">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+						<s:TextInput width="180" id="name6" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}" >
+						<s:TextInput width="120" id="brand6" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" >
+						<s:TextInput width="260" height="80" id="remark6" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" >
+						<s:TextInput width="200" id="model6" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00137')}" required="true" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput width="100" id="uHoldCount6" maxChars="1" restrict="0-9" editable="{editable}"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+		<s:NavigatorContent width="100%" height="100%" id="terminal">
+			<s:HGroup width="100%" >
+				<s:Form width="50%" height="100%" textAlign="left" >
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+						<s:TextInput width="180" id="name7" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','C00007')}" >
+						<s:TextInput width="120" id="brand7" maxChars="50"/>
+					</s:FormItem>
+				</s:Form>
+				<s:Form width="50%" height="100%" textAlign="left">
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00135')}" >
+						<s:TextInput width="200" id="model7" maxChars="50"/>
+					</s:FormItem>
+					<s:FormItem width="50%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" >
+						<s:TextInput width="260" height="80" id="remark7" maxChars="100"/>
+					</s:FormItem>
+				</s:Form>
+			</s:HGroup>
+		</s:NavigatorContent>
+	</mx:ViewStack>
+</s:Group>

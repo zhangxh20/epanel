@@ -1,0 +1,503 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2010-2011 Esri. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//	http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+///////////////////////////////////////////////////////////////////////////
+-->
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"
+				   xmlns:toc="com.esri.viewer.components.toc.*"
+				   widgetConfigLoaded="widgetConfigLoadedHandler()">
+	<fx:Script>
+		<![CDATA[
+			import com.esri.ags.Graphic;
+			import com.esri.ags.events.ExtentEvent;
+			import com.esri.ags.events.MapMouseEvent;
+			import com.esri.ags.geometry.Extent;
+			import com.esri.ags.geometry.Geometry;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.layers.ArcGISDynamicMapServiceLayer;
+			import com.esri.ags.layers.Layer;
+			import com.esri.ags.tasks.IdentifyTask;
+			import com.esri.ags.tasks.supportClasses.IdentifyParameters;
+			import com.esri.ags.tasks.supportClasses.IdentifyResult;
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.collections.ArrayList;
+			import mx.controls.Alert;
+			import mx.core.FlexGlobals;
+			import mx.core.UIComponent;
+			import mx.rpc.AsyncResponder;
+			import mx.resources.ResourceManager;
+			
+			import spark.components.supportClasses.ListBase;
+
+			private var hideOpLayersTimer:Timer = new Timer(250);
+			private var hideBasemapsTimer:Timer = new Timer(250);
+			private var hideSuspended:Boolean = false;
+
+			private var expandLayerItems:Boolean;
+			private var basemapSelectionComponent:ListBase;
+
+			[Bindable]
+			private var shouldShowOpLayers:Boolean;
+			[Bindable]
+			private var shouldShowBasemaps:Boolean;
+
+			[Bindable]
+			private var basemapList:ArrayList;
+
+			[Bindable]
+			private var opLayerListButtonLabel:String;
+			[Bindable]
+			private var basemapsLabel:String;
+			/** 查询地图上的建筑点位 */
+			private var mapIdTask:IdentifyTask;
+			/** 查询系统图上机柜（楼层）点位 */
+			private var sysIdTask:IdentifyTask;
+			/** 查询点位图上的机柜点位 */
+			private var cadIdTask:IdentifyTask;
+			
+			private var identifyParams:IdentifyParameters;
+			/** 地图定位坐标 */
+			private var mapExtent:Extent;
+			/** 系统图定位坐标 */
+			private var sysExtent:Extent;
+			/** 点位图定位坐标 */
+			private var cadExtent:Extent;
+			
+			private function widgetConfigLoadedHandler():void
+			{
+				var showThumbnails:Boolean;
+
+				if (configXML)
+				{
+					opLayerListButtonLabel = configXML.labels.layerlistlabel || getDefaultString("layerListLabel");
+					basemapsLabel = configXML.labels.basemapslabel || getDefaultString("basemap");
+					expandLayerItems = (configXML.expandlayeritems == "true");
+					showThumbnails = (configXML.showthumbnails[0] != "false");
+				}
+				mapIdTask = new IdentifyTask();
+				mapIdTask.url = configData.basemaps[0].url;
+				mapIdTask.concurrency = "last";
+				sysIdTask = new IdentifyTask();
+				sysIdTask.url = configData.basemaps[1].url;
+				sysIdTask.concurrency = "last";
+				cadIdTask = new IdentifyTask();
+				cadIdTask.url = configData.basemaps[2].url;
+				cadIdTask.concurrency = "last";
+				identifyParams = new IdentifyParameters();
+				identifyParams.returnGeometry = true;
+				// 点查询的容差范围
+				identifyParams.tolerance = 10;
+				map.addEventListener(MapMouseEvent.MAP_CLICK,onMapClick);
+				initBasemaps(showThumbnails);
+				AppEvent.addListener(EventType.BASEMAP_CHANGE,basemapChange);
+			}
+			
+			/**
+			 * 点击地图
+			 */
+			private function onMapClick(event:MapMouseEvent):void {
+				identifyParams.width = map.width;
+				identifyParams.height = map.height;
+				identifyParams.geometry = event.mapPoint;
+				identifyParams.mapExtent = map.extent;
+				identifyParams.spatialReference = map.spatialReference;
+				var clickGraphic:Graphic = new Graphic(event.mapPoint);
+				mapIdTask.execute(identifyParams, new AsyncResponder(mapIdTaskResult, faultFunction, clickGraphic));
+			}
+			
+			private function onSysClick(event:MapMouseEvent):void {
+				identifyParams.width = map.width;
+				identifyParams.height = map.height;
+				identifyParams.geometry = event.mapPoint;
+				identifyParams.mapExtent = map.extent;
+				identifyParams.spatialReference = map.spatialReference;
+				var clickGraphic:Graphic = new Graphic(event.mapPoint);
+				sysIdTask.execute(identifyParams, new AsyncResponder(sysIdTaskResult, faultFunction, clickGraphic));
+			}
+			
+			private function onCadClick(event:MapMouseEvent):void {
+				identifyParams.width = map.width;
+				identifyParams.height = map.height;
+				identifyParams.geometry = event.mapPoint;
+				identifyParams.mapExtent = map.extent;
+				identifyParams.spatialReference = map.spatialReference;
+				var clickGraphic:Graphic = new Graphic(event.mapPoint);
+				cadIdTask.execute(identifyParams, new AsyncResponder(cadIdTaskResult, faultFunction, clickGraphic));
+			}
+			
+			private function faultFunction(error:Object, clickGraphic:Graphic = null):void {
+				Alert.show(String(error), "Identify Error");
+			}
+			
+			private function basemapChange(event:AppEvent):void  {
+				var index:int = int(event.data);
+				basemapSelectionComponent.selectedIndex = index;
+				dispatchChangeBasemapEvent();
+			}
+			
+			/**
+			 * 地图点查询
+			 */ 
+			private function mapIdTaskResult(results:Array, clickGraphic:Graphic = null):void
+			{
+				if (results && results.length > 0)
+				{
+					var result:IdentifyResult = results[0];
+					var resultGraphic:Graphic = result.feature;
+					if (resultGraphic.geometry.type == Geometry.MAPPOINT) {
+						if (resultGraphic.attributes["type"] == 0) {
+							map.centerAt(resultGraphic.geometry as MapPoint);
+							map.scale= 3500;
+							return;
+						}
+						var layers:ArrayCollection = map.layers as ArrayCollection;
+						var syslayer:ArcGISDynamicMapServiceLayer = layers.getItemAt(1) as ArcGISDynamicMapServiceLayer ;
+						(layers.getItemAt(0) as Layer).visible = false;
+						(layers.getItemAt(2) as Layer).visible = false;
+						syslayer.visible = true;
+						syslayer.visibleLayers = new ArrayList();
+						//选择图层的可见性
+						syslayer.visibleLayers.addItem(resultGraphic.attributes["layerid"]);
+						var extent:Extent = new Extent(resultGraphic.attributes["xmin"],resultGraphic.attributes["ymin"],
+							resultGraphic.attributes["xmax"],resultGraphic.attributes["ymax"]);
+						mapExtent = map.extent;
+						sysExtent = extent;
+						map.extent = extent;
+						basemapSelectionComponent.selectedIndex = 1;
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onMapClick);
+						map.addEventListener(MapMouseEvent.MAP_CLICK,onSysClick);
+					}
+				}
+			}
+			
+			/**
+			 * 系统图点查询
+			 */ 
+			private function sysIdTaskResult(results:Array, clickGraphic:Graphic = null):void
+			{
+				if (results && results.length > 0)
+				{
+					var result:IdentifyResult = results[0];
+					var resultGraphic:Graphic = result.feature;
+					if (resultGraphic.geometry.type == Geometry.MAPPOINT) {
+						var layers:ArrayCollection = map.layers as ArrayCollection;
+						var cadlayer:ArcGISDynamicMapServiceLayer = layers.getItemAt(2) as ArcGISDynamicMapServiceLayer ;
+						(layers.getItemAt(0) as Layer).visible = false;
+						(layers.getItemAt(1) as Layer).visible = false;
+						cadlayer.visible = true;
+						cadlayer.visibleLayers = new ArrayList();
+						//选择图层的可见性
+						cadlayer.visibleLayers.addItem(resultGraphic.attributes["layerid"]);
+						var extent:Extent = new Extent(resultGraphic.attributes["xmin"],resultGraphic.attributes["ymin"],
+							resultGraphic.attributes["xmax"],resultGraphic.attributes["ymax"]);
+						sysExtent = map.extent;
+						map.extent = extent;
+						cadExtent = extent;
+						basemapSelectionComponent.selectedIndex = 2;
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onSysClick);
+						map.addEventListener(MapMouseEvent.MAP_CLICK,onCadClick);
+					}
+				}
+			}
+			
+			/**
+			 * 点位图点查询
+			 */ 
+			private function cadIdTaskResult(results:Array, clickGraphic:Graphic = null):void
+			{
+				if (results && results.length > 0)
+				{
+					var result:IdentifyResult = results[0];
+					var resultGraphic:Graphic = result.feature;
+					if (resultGraphic.geometry.type == Geometry.MAPPOINT) {
+						var type:int = int(resultGraphic.attributes["type"]);
+						if (type == 1) {
+							//点击的是机柜点
+							var id:int = int(resultGraphic.attributes["Id"]);
+							AppEvent.dispatch(AppEvent.BASEMAP_SWITCH, "3");
+							AppEvent.dispatch(EventType.CABINET_SHOW,id);
+							basemapSelectionComponent.selectedIndex = 3;	
+						}else if(type == 0){
+							//点击的是信息点
+							var obj:Object = new Object();
+							obj.spotCode = String(resultGraphic.attributes["name"]);
+							obj.type = 1;
+							AppEvent.dispatch(AppEvent.WIDGET_RUN,4);
+							setTimeout(function():void{
+								AppEvent.dispatch(EventType.CHAIN_SHOW,obj)
+							},500);
+						}
+						
+					}
+				}
+			}
+
+			private function initBasemaps(showThumbnails:Boolean):void
+			{
+				initBasemapList();
+				if (basemapList.length <= 1)
+				{
+					currentState = "noBasemaps";
+				}
+				else
+				{
+					currentState = showThumbnails ? "thumbnailOptions" : "buttonOptions";
+					initBasemapSelectionComponent(showThumbnails);
+				}
+			}
+
+			private function initBasemapSelectionComponent(showThumbnails:Boolean):void
+			{
+				basemapSelectionComponent = showThumbnails ? basemapGallery : basemapsButtonBar;
+				preselectTopmostVisibleBasemap();
+				hideBasemapsTimer.addEventListener(TimerEvent.TIMER, hideBasemapsTimer_timerHandler, false, 0, true);
+			}
+
+			private function initBasemapList():void
+			{
+				basemapList = new ArrayList();
+				var labels:Array = [];
+				for each (var basemap:Object in configData.basemaps)
+				{
+					var label:String = basemap.label;
+					if (labels.indexOf(label) == -1) // avoid duplicates using the labels
+					{
+						labels.push(label);
+						var basemapItem:Basemap = new Basemap(basemap.id, label, basemap.icon, basemap.visible);
+						basemapList.addItem(basemapItem);
+					}
+				}
+				//添加机柜展示图和机柜管理图、机柜拓扑图
+				var item1:Basemap = new Basemap("3",getDefaultString("lbCabinetShow"),"assets/images/backIcon4.png",false)
+				basemapList.addItem(item1);
+				var item2:Basemap = new Basemap("4",getDefaultString("lbCabinetMNG"),"assets/images/backIcon5.png",false)
+				basemapList.addItem(item2);
+//				var item3:Basemap = new Basemap("5","机柜拓扑图","assets/images/backIcon6.png",false)
+				var item3:Basemap = new Basemap("5",ResourceManager.getInstance().getString("ViewerStrings","T00220"),"assets/images/backIcon6.png",false)
+				basemapList.addItem(item3);
+			}
+
+			private function setWidgetState(showThumbnails:Boolean):void
+			{
+				if (basemapList.length <= 1)
+				{
+					currentState = "noBasemaps";
+				}
+				else
+				{
+					currentState = showThumbnails ? "thumbnailOptions" : "buttonOptions";
+				}
+			}
+
+			private function preselectTopmostVisibleBasemap():void
+			{
+				var totalBasemaps:Array = basemapList.toArray().reverse();
+				for each (var basemap:Basemap in totalBasemaps)
+				{
+					if (basemap.visible)
+					{
+						basemapSelectionComponent.selectedItem = basemap;
+						break;
+					}
+				}
+			}
+
+			private function hideOpLayersTimer_timerHandler(event:TimerEvent):void
+			{
+				if (!hideSuspended)
+				{
+					AppEvent.dispatch(AppEvent.TOC_HIDDEN);
+					shouldShowOpLayers = false;
+				}
+			}
+
+			private function hideBasemapsTimer_timerHandler(event:TimerEvent):void
+			{
+				shouldShowBasemaps = false;
+			}
+
+			private function suspendHideListener(event:AppEvent):void
+			{
+				hideSuspended = (event.data != null);
+			}
+
+
+			private function getExcludeLayers():ArrayCollection
+			{
+				var excludeLayers:ArrayCollection = new ArrayCollection();
+
+				if (configData && configData.basemaps)
+				{
+					// exclude basemaps
+					for (var i:int = 0; i < configData.basemaps.length; i++)
+					{
+						excludeLayers.addItem(configData.basemaps[i].label);
+					}
+				}
+
+				if (configXML)
+				{
+					// exclude these layers
+					var layers:XMLList = configXML.layerlist.excludelayer as XMLList;
+					for (var j:int = 0; j < layers.length(); j++)
+					{
+						excludeLayers.addItem(layers[j].toString());
+					}
+				}
+
+				return excludeLayers;
+			}
+
+			private function startHideTimer():void
+			{
+				hideOpLayersTimer.reset();
+				hideOpLayersTimer.start();
+			}
+
+			private function opLayerListButton_rollOverHandler(event:MouseEvent):void
+			{
+				shouldShowBasemaps = false;
+				shouldShowOpLayers = true;
+				hideOpLayersTimer.reset();
+			}
+
+			private function updateContainerPosition(anchorComponent:DisplayObject, container:UIComponent):void
+			{
+				var containerGlobalBottomRightPoint:Point = anchorComponent.localToGlobal(new Point(container.width, container.height));
+				positionContainerHorizontally(containerGlobalBottomRightPoint.x, anchorComponent, container);
+				positionContainerVertically(containerGlobalBottomRightPoint.y, anchorComponent, container);
+			}
+
+			private function positionContainerHorizontally(x:Number, anchorComponent:DisplayObject, container:UIComponent):void
+			{
+				var appWidth:Number = FlexGlobals.topLevelApplication.width;
+				if (x > appWidth)
+				{
+					container.x = anchorComponent.x - container.width + anchorComponent.width;
+				}
+				else
+				{
+					container.x = anchorComponent.x;
+				}
+			}
+
+			private function positionContainerVertically(y:Number, anchorComponent:DisplayObject, container:UIComponent):void
+			{
+				var appHeight:Number = FlexGlobals.topLevelApplication.height;
+				if (y > appHeight)
+				{
+					container.y = anchorComponent.y + 1 - container.height;
+				}
+				else
+				{
+					container.y = anchorComponent.height - 1;
+				}
+			}
+
+			private function dispatchChangeBasemapEvent():void {
+				AppEvent.dispatch(AppEvent.BASEMAP_SWITCH, (basemapSelectionComponent.selectedItem as Basemap).id);
+				var index:int = basemapSelectionComponent.selectedIndex;
+				switch (index) {
+					case 0 :
+						map.extent = mapExtent;
+						map.addEventListener(MapMouseEvent.MAP_CLICK,onMapClick);
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onSysClick);
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onCadClick);
+						break;
+					case 1 :
+						map.extent = sysExtent;
+						map.addEventListener(MapMouseEvent.MAP_CLICK,onSysClick);
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onMapClick);
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onCadClick);
+						break;
+					case 2 :
+						map.extent = cadExtent;
+						map.addEventListener(MapMouseEvent.MAP_CLICK,onCadClick);
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onSysClick);
+						map.removeEventListener(MapMouseEvent.MAP_CLICK,onMapClick);
+						break;
+				}
+			}
+
+			private function startBasemapsHideTimer():void
+			{
+				hideBasemapsTimer.reset();
+				hideBasemapsTimer.start();
+			}
+
+			private function basemapsButton_rollOverHandler(event:MouseEvent):void
+			{
+				shouldShowOpLayers = false;
+				shouldShowBasemaps = true;
+				hideBasemapsTimer.reset();
+				updateContainerPosition(basemapsButton, basemapsContainer);
+			}
+
+			private function basemapGallery_clickHandler(event:MouseEvent):void
+			{
+				var basemapItemRenderer:BasemapItemRenderer = event.target as BasemapItemRenderer;
+				if (basemapItemRenderer)
+				{
+					shouldShowBasemaps = false;
+				}
+			}
+		]]>
+	</fx:Script>
+
+	<viewer:states>
+		<s:State name="noBasemaps"/>
+		<s:State name="thumbnailOptions" stateGroups="normal"/>
+		<s:State name="buttonOptions" stateGroups="normal"/>
+	</viewer:states>
+
+	<s:HGroup id="mapLayersContainer" gap="9">
+		<s:ButtonBar id="basemapsButtonBar" includeIn="buttonOptions"
+					 change="dispatchChangeBasemapEvent()" dataProvider="{basemapList}"
+					 labelField="label" requireSelection="true"/>
+		<s:Button id="basemapsButton" includeIn="thumbnailOptions" label="{basemapsLabel}"
+				  rollOut="startBasemapsHideTimer()"
+				  rollOver="basemapsButton_rollOverHandler(event)"
+				  skinClass="com.esri.viewer.skins.BasemapsButtonSkin"/>
+	</s:HGroup>
+
+	<s:BorderContainer id="basemapsContainer" includeIn="thumbnailOptions"
+					   visible="{shouldShowBasemaps}" borderColor="0xffffff" borderVisible="true" cornerRadius="3"
+					   backgroundColor="{getStyle('contentBackgroundColor')}"
+					   includeInLayout="false" rollOut="startBasemapsHideTimer()"
+					   rollOver="hideBasemapsTimer.reset()">
+		<s:List id="basemapGallery" maxHeight="362" borderVisible="false"
+				change="dispatchChangeBasemapEvent()" click="basemapGallery_clickHandler(event)"
+				dataProvider="{basemapList}" itemRenderer="widgets.MapSwitcher.BasemapItemRenderer"
+				requireSelection="true">
+			<s:layout>
+				<s:TileLayout paddingBottom="10" paddingLeft="10" paddingRight="10" paddingTop="10"
+							requestedColumnCount="{(basemapList.length &gt; 2) ? 3 : 2}"/>
+			</s:layout>
+		</s:List>
+		<s:filters>
+			<s:DropShadowFilter alpha="0.5" blurX="10" blurY="10"/>
+		</s:filters>
+	</s:BorderContainer>
+	
+</viewer:BaseWidget>

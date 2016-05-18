@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" width="500" height="350" title="{ResourceManager.getInstance().getString('ViewerStrings','T00259')}" close="closeWin()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="scanJumpOnClickCancel"/>
+			<s:method name="scanJumpOnClickConfirm"/>
+			<s:method name="sendInstallationJumpsScanOrder" result="scanCabelResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			public var obj : Object ; //推送对象
+			
+			private var shelfArr : ArrayCollection ;
+			
+			private var controllerId : int;
+			
+			public var timer : Timer = new Timer(20000);
+			
+			private function cancelCable():void{
+				remote.scanJumpOnClickCancel(controllerId);
+			}
+			
+			private function closeWin():void{
+				PopUpManager.removePopUp(this);
+			}
+			
+			public function init():void{
+				if(obj){
+					shelfArr = obj.jumpScanNoDataShelfList as ArrayCollection;
+					dataGrid.dataProvider = shelfArr;
+					label.text = ResourceManager.getInstance().getString("ViewerStrings","T00260")+obj.scannedJumpCount+ResourceManager.getInstance().getString("ViewerStrings","T00261")+obj.jumpScanWarningCount+ResourceManager.getInstance().getString("ViewerStrings","T00262");
+					controllerId = obj.jumpScanControllerId;
+				}
+			}
+			
+			//继续跳线扫描
+			private function continueScanCabel():void{
+				closeWin();
+				CommonUtil.startLoading(0,20);
+				remote.sendInstallationJumpsScanOrder(controllerId);
+				obj = null;
+				timer.addEventListener(TimerEvent.TIMER,timerHandler);
+				timer.reset();
+				timer.start();
+			}
+			
+			private function timerHandler(event : TimerEvent):void{
+				timer.stop();
+				CommonUtil.stopLoading();
+//				Alert.show("扫描跳线失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00072"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				closeWin();
+			}
+			
+			private function addCabel():void{
+				remote.scanJumpOnClickConfirm(controllerId);
+				closeWin();
+			}
+			
+			private function scanCabelResult(event:ResultEvent):void{
+				if(!event.result){
+//					Alert.show("扫描跳线失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00072"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					timer.stop();
+					CommonUtil.stopLoading();
+				}
+			}
+			
+			private function getMngPort(item:Object,grid:GridColumn):String{
+				var mngPort : String = item.shelfMngPort;
+				return CommonUtil.getNewCode(mngPort,"shelf");
+			}
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<s:VGroup width="100%" height="100%" top="5" bottom="5" left="5" right="5">
+		<s:Label id="label" width="100%" height="5%"  textAlign="center" verticalAlign="middle" fontWeight="bold"/>
+		<s:Label width="100%" height="5%" text="{ResourceManager.getInstance().getString('ViewerStrings','T00263')}" textAlign="left" verticalAlign="middle" fontWeight="bold"/>
+		<s:DataGrid id="dataGrid" width="100%" height="85%">
+			<s:columns>
+				<s:ArrayCollection>
+					<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','C00002')}" dataField="shelfName"/>
+					<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00179')}" dataField="shelfMngPort" labelFunction="getMngPort"/>
+				</s:ArrayCollection>
+			</s:columns>
+		</s:DataGrid>
+		<s:HGroup width="100%" height="5%" horizontalAlign="center" verticalAlign="middle">
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00264')}" click="continueScanCabel()"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="addCabel()"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="closeWin()"/>
+		</s:HGroup>
+	</s:VGroup>
+</s:TitleWindow>

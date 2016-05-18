@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" 
+			   title="{ResourceManager.getInstance().getString('ViewerStrings','T00249')}"
+			   width="400" height="300" close="PopUpManager.removePopUp(this)">
+	
+	<fx:Script>
+		<![CDATA[
+			import mx.managers.PopUpManager;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			private var _array : ArrayCollection ;
+			
+			public function set array(value : ArrayCollection):void{
+				this._array = value;
+			}
+		]]>
+	</fx:Script>
+	
+	
+	<s:Group left="5" right="5" top="5" bottom="5" width="100%" height="100%">
+		<s:layout>
+			<s:VerticalLayout/>
+		</s:layout>
+		<s:DataGrid id="dataGrid" width="100%" height="90%" dataProvider="{_array}">
+			<s:columns>
+				<s:ArrayCollection>
+					<s:GridColumn width="40" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00021')}" dataField="no"/>
+					<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00250')}" dataField="name"/>
+					<s:GridColumn headerText="ip" dataField="ip"/>
+				</s:ArrayCollection>
+			</s:columns>
+		</s:DataGrid>
+		
+		<s:HGroup width="100%" height="5%" horizontalAlign="right">
+			<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00251')}" height="100%" color="red"
+					 textAlign="center" verticalAlign="middle" fontWeight="bold"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="PopUpManager.removePopUp(this)"/>
+		</s:HGroup>
+		
+	</s:Group>
+</s:TitleWindow>

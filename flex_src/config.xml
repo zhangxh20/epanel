@@ -1,0 +1,90 @@
+<?xml version="1.0" ?>
+<!-- //////////////////////////////////////////////////////////////////////////////// 
+	// // Read more about ArcGIS Viewer for Flex - http://links.esri.com/flexviewer 
+	// //////////////////////////////////////////////////////////////////////////////// -->
+<configuration>
+	<title>assets/images/inetsepanel.png</title>
+	<subtitle>GOKEI</subtitle>
+	<logo>assets/images/gokei_logo.png</logo>
+	<style>
+		<colors>0xFFFFFF,0x333333,0x101010,0x000000,0xFFD700</colors>
+		<alpha>0.8</alpha>
+	</style>
+	<!-- replace the following url with yo ur own geometryservice -->
+	<geometryservice url="http://tasks.arcgisonline.com/ArcGIS/rest/services/Geometry/GeometryServer" />
+	<!-- UI elements -->
+	<!-- 导航工具 -->
+	<widget left="10" top="50" config="widgets/Navigation/NavigationWidget.xml"
+		url="widgets/Navigation/NavigationWidget.swf" />
+	<!-- 缩略图 -->
+	<widget right="-2" bottom="-2"
+		config="widgets/OverviewMap/OverviewMapWidget.xml" url="widgets/OverviewMap/OverviewMapWidget.swf" />
+	<!-- 工具条 -->
+	<widget left="0" top="0" url="widgets/HeaderController/HeaderControllerWidget.swf" />
+	<!-- 底图选择 -->
+	<widget left="10" bottom = "10"
+		config="widgets/MapSwitcher/MapSwitcherWidget.xml" url="widgets/MapSwitcher/MapSwitcherWidget.swf" />
+	<map wraparound180="true" top="40" esrilogovisible="false"
+		scalebarvisible="false">
+		<basemaps>
+			<layer label="地图" type="dynamic" visible="true"
+				icon="assets/images/basemap_streets.jpg"
+				url="http://127.0.0.1/arcgis/rest/services/SHMAP/MapServer" />
+			<layer label="系统图" type="dynamic" visible="false"
+				icon="assets/images/basemap_topographic.jpg"
+				url="http://127.0.0.1/arcgis/rest/services/SYS/MapServer" />
+			<layer label="点位图" type="dynamic" visible="false"
+				icon="assets/images/basemap_imagery.jpg"
+				url="http://127.0.0.1/arcgis/rest/services/CAD/MapServer" />
+		</basemaps>
+	</map>
+ 
+	<!-- widgets organized into widget containers that manage close/open etc -->
+	<!-- supported layout property options: horizontal(default)|float|vertical|fix -->
+	<widgetcontainer layout="float">
+		<widget label="告警" left="200" top="50" authid="23"
+			icon="assets/images/i_alarm.png" config="widgets/Alarm/AlarmWidget.xml"
+			url="widgets/Alarm/AlarmWidget.swf" />
+		<widget label="配线单" left="150" top="150" authid="26"
+			icon="assets/images/i_wiring.png" config="widgets/WiringSheet/WiringSheetWidget.xml"
+			url="widgets/WiringSheet/WiringSheetWidget.swf" />
+		<widget label="工作单" left="150" top="150" authid="27"
+			icon="assets/images/i_worksheet.png" config="widgets/WorkSheet/WorkSheetWidget.xml"
+			url="widgets/WorkSheet/WorkSheetWidget.swf" />
+		<widget label="导航" left="95" top="50" authid="28"
+			icon="assets/images/i_tree.png" config="widgets/Tree/TreeWidget.xml"
+			url="widgets/Tree/TreeWidget.swf" />
+		<widget label="链路" left="95" bottom="10" authid="29"
+			icon="assets/images/i_chain.png" 
+			url="widgets/Chain/ChainWidget.swf" />
+		<widgetgroup label="工具" icon="assets/images/i_tool.png">
+			<widget label="配线工具" left="400" top="50" authid="30"
+				icon="assets/images/i_wiringMng.png" 
+				url="widgets/Wiring/WiringWidget.swf" />
+			<widget label="设备管理" left="95" top="50" authid="31"
+				icon="assets/images/i_cabinetMng.png" config="widgets/CabinetManager/cabinetManager.xml"
+				url="widgets/CabinetManager/CabinetMngWidget.swf" />
+			<widget label="设备配置" left="95" top="50" authid="32"
+				icon="assets/images/i_cabConfig.png" config="widgets/CabinetManager/cabinetManager.xml"
+				url="widgets/CabinetConfig/CabinetConfigWidget.swf" />
+		</widgetgroup>
+		<widgetgroup label="系统" icon="assets/images/i_system.png">
+			<widget label="用户设置" left="400" top="50" authid="33"
+				icon="assets/images/i_userSetting.png" config="widgets/UserSetting/UserSetting.xml"
+				url="widgets/UserSetting/UserSettingWidget.swf" />
+			<widget label="常规设置" left="95" top="50" authid="34"
+				icon="assets/images/i_generalSetting.png" 
+				url="widgets/GeneralSetting/GeneralSettingWidget.swf" />
+			<widget label="基础数据" left="400" top="100"
+				icon="assets/images/i_basicData.png" authid="35"
+				url="widgets/BasicData/BasicDataWidget.swf" />
+			<widget label="统计查询" left="95" top="50"
+				icon="assets/images/i_queryAll.png" authid="36"
+				url="widgets/QueryAll/QueryAllWidget.swf" />
+			<widget label="文档附件" left="400" top="200"
+				icon="assets/images/i_document.png" authid="37"
+				url="widgets/DocMng/DocMngWidget.swf" />
+		</widgetgroup>
+	</widgetcontainer>
+
+</configuration>

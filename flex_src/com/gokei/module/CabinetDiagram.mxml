@@ -1,0 +1,395 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 机柜展示图
+
+// @Author zhang
+// @Version v1.0
+// @Date 2012-09
+///////////////////////////////////////////////////////////////////////////
+-->
+<s:Module xmlns:fx="http://ns.adobe.com/mxml/2009"
+		  xmlns:s="library://ns.adobe.com/flex/spark"
+		  xmlns:mx="library://ns.adobe.com/flex/mx"
+		  xmlns:gokei="com.gokei.components.cabinet.*"
+		  width="100%" height="100%" creationComplete="init()">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.components.Loading;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.resources.ResourceManager;
+			
+			private var loading:Loading;
+			// 载入机柜超时时间
+			private var seconds:int = 5;
+			
+			private var id1:int = -1;
+			
+			private var id2:int = -1;
+			
+			// 是否载入第一个机柜
+			private var oneHasLoaded:Boolean = false;
+			
+			private var target:Object;
+			
+			private var targetCainet:Cabinet;
+			// -------------------- 生成第二个机柜后，是否显示目标端口 ----------
+			private var targetShow:Boolean = false;
+			// -------------------- 显示目标端口（配线单联动） ----------
+			private var targetShowX:Boolean = false;
+			// -------------------- 生成第一个机柜后，是否告警灯 ----------
+			private var targetAlarm:Boolean = false;
+			// -------------------- 配线单连动，显示线缆 -----------
+			private var showCable:Boolean = false;
+			// -------------------- 跨机柜显示第二个端口 ----------
+			private var doubleCabinet:Boolean = false;
+			// -------------------- 设备添加成功后闪动 ----------
+			private var waveEqmt:Boolean = false;
+			// -------------------- 刷新机柜 ----------
+			private var loadPort:Boolean = false;
+			// -------------------- 刷新机柜索引 ----------
+			private var loadPortIndex:int;
+			// -------------------- 机柜ID数组 ----------
+			private var cabinetIds:ArrayCollection ;
+			
+			private function init():void {
+				AppEvent.addListener(EventType.CABINET_SHOW,cabinetShow);
+				AppEvent.addListener(EventType.STOP_LOADING,stopLoading);
+				AppEvent.addListener(EventType.DOUBLE_CABINET_SHOW,doubleCabinetShow);
+				AppEvent.addListener(EventType.CABINET_CLOSE,cabinetClose);
+				AppEvent.addListener(EventType.ALARM_CABINET,alarmCabinet);
+				AppEvent.addListener(EventType.WIRING_SHEET_CABINET,wiringSheetCabinet);
+				AppEvent.addListener(EventType.BUILD_SUCC_CABSHOW,buildSuccCabShow);
+				AppEvent.addListener(EventType.EQMT_DELETE_SUCC,eqmtDeleteSucc);
+				AppEvent.addListener(EventType.CABINET_REFRESH,cabinetRefresh);
+				// ---------------- 管理图到展示图联动 ----------------
+				AppEvent.addListener(EventType.MNG_DIA_FIND,mngDiaFind);
+			}
+			
+			/**
+			 * 显示机柜
+			 */ 
+			private function cabinetShow(event:AppEvent):void {
+				var id:int = int(event.data);
+				CommonUtil.startLoading(1,seconds);
+				if (oneHasLoaded && id1 != id) {
+					id2 = id;
+					cab2.show(id);
+					oneHasLoaded = false;
+				} else if (!oneHasLoaded && id2 != id) {
+					id1 = id;
+					cab1.show(id);
+					oneHasLoaded = true;
+				} else {
+					CommonUtil.stopLoading();
+//					Alert.show("选择的机柜重复");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00005"));
+				}
+				//AppEvent.dispatch(AppEvent.WIDGET_RUN, 5);
+			}
+			
+			/**
+			 * 跨机柜显示
+			 */ 
+			private function doubleCabinetShow(event:AppEvent):void {
+				var showData:Object = event.data;
+				if (cab1 == showData.currentCabinet) {
+					if (id2 == showData.target.cabinetId) {
+						cab2.showTargetPort(showData.target);
+					} else {
+						targetShow = true;
+						targetCainet = cab2;
+						target = showData.target;
+						id2 = showData.target.cabinetId;
+						cab2.show(showData.target.cabinetId);
+					}
+				} else {
+					if (id1 == showData.target.cabinetId) {
+						cab1.showTargetPort(showData.target);
+					} else {
+						targetShow = true;
+						targetCainet = cab1;
+						target = showData.target;
+						id1 = showData.target.cabinetId;
+						cab1.show(showData.target.cabinetId);
+					}
+				}
+			}
+			
+			/**
+			 * 关闭机柜
+			 */ 
+			private function cabinetClose(event:AppEvent):void {
+				var index:int = int(event.data);
+				if (index == 0) {
+					id1 = -1;
+					oneHasLoaded = false;
+				} else {
+					id2 = -1;
+				}
+			}
+			
+			/**
+			 * loading取消显示
+			 */ 
+			private function stopLoading(event:AppEvent):void {
+				CommonUtil.stopLoading();
+				// 机柜图：查询当前载入的机柜是否有告警信息
+				AppEvent.dispatch(EventType.CABINET_ALARM_LAMP);
+				if (targetShow) {
+					targetCainet.showTargetPort(target);
+					targetShow = false;
+				}
+				if (targetShowX) {
+					targetCainet.showTargetPortX(target);
+					targetShowX = false;
+				}
+				// ---------------- 显示告警灯-----------
+				if (targetAlarm) {
+					cab1.showAlarmPort(target);
+					targetAlarm = false;
+				}
+				// ---------------- 显示线缆 -----------
+				if (showCable) {
+					cab1.showCable(target);
+					showCable = false;
+				}
+				 // --------------- 显示第二个机柜和端口 --------
+				if (doubleCabinet) {
+					var data:Object = new Object();
+					data.uNo = target.uNo2;
+					data.portCode = target.portCode2;
+					data.cabinetId = target.cabinetId2;
+					target = data;
+					targetShowX = true;
+					targetCainet = cab2;
+					CommonUtil.startLoading(1,seconds);
+					id2 = data.cabinetId;
+					cab2.show(id2);
+					doubleCabinet = false;
+				}
+				// ---------------- 设备添加成功后闪动 ----------
+				if (waveEqmt) {
+					// ------------ 
+					if (target.midType != "ZNCJ") {
+						cab1.waveEuipment(target);
+					}
+					waveEqmt = false;
+				}
+				if (loadPort) {
+					if (loadPortIndex == 0) {
+						cab1.refreshAllPort();
+						loadPortIndex = 1;
+						loadPort = false;
+						// 第一个机柜刷新完，判断第二个
+						if (id2 != -1) {
+							for (var i:int = 0; i < cabinetIds.length; i++) {
+								if (id2 == cabinetIds.getItemAt(i)) {
+									loadPort = true;
+									cab2.show(id2);
+									break;
+								}
+							}
+						}
+					} else if (loadPortIndex == 1) {
+						cab2.refreshAllPort();
+						loadPort = false;
+					}
+				}
+			}
+			
+			/**
+			 * 告警联动到机柜图
+			 * @param obj.cabinetId 机柜ID
+			 * @param obj.uNo U层
+			 * @param obj.portCode 端口编号
+			 */ 
+			private function alarmCabinet(event:AppEvent):void {
+				var obj:Object = event.data;
+				if (obj.cabinetId == id1) {
+					cab1.showAlarmPort(obj);
+				} else {
+					CommonUtil.startLoading(1,seconds);
+					id1 = obj.cabinetId;
+					cab1.show(obj.cabinetId);
+					target = obj;
+					targetAlarm = true;
+				}
+			}
+			
+			/**
+			 * 配线单到机柜图联动
+			 */ 
+			private function wiringSheetCabinet(event:AppEvent):void {
+				var obj:Object = event.data;
+				// ---------------- 两个端口在同一个机柜里 -----------------
+				if (obj.cabinetId1 == obj.cabinetId2) {
+					// ---------------- 先关掉机柜2-----------------
+					if (id2 != -1) {
+						cab2.closeCabinet();
+					}
+					// ------------ 当前机柜已经载入 -----------------------
+					if (id1 == obj.cabinetId1) {
+						cab1.showCable(obj);
+					} else {
+						id1 = obj.cabinetId1;
+						CommonUtil.startLoading(1,seconds);
+						showCable = true;
+						cab1.show(id1);
+						target = obj;
+					}
+				// ---------------- 两个端口在不同的两个机柜里 -----------------
+				} else {
+					doubleCabinet = true;
+					var data:Object;
+					if (id1 == obj.cabinetId1) {
+						data = new Object();
+						data.uNo = obj.uNo1;
+						data.portCode = obj.portCode1;
+						cab1.showTargetPortX(data);
+						if (id2 == obj.cabinetId2) {
+							data = new Object();
+							data.uNo = obj.uNo2;
+							data.portCode = obj.portCode2;
+							cab2.showTargetPortX(data);
+						} else {
+							targetShowX = true;
+							targetCainet = cab2;
+							data = new Object();
+							data.uNo = obj.uNo2;
+							data.portCode = obj.portCode2;
+							target = data;
+							CommonUtil.startLoading(1,seconds);
+							id2 = obj.cabinetId2;
+							doubleCabinet = false;
+							cab2.show(id2);
+						}
+					} else {
+						targetShowX = true;
+						targetCainet = cab1;
+						var dataX:Object = new Object();
+						dataX.uNo = obj.uNo1;
+						dataX.portCode = obj.portCode1;
+						dataX.cabinetId2 = obj.cabinetId2;
+						dataX.uNo2 = obj.uNo2;
+						dataX.portCode2 = obj.portCode2;
+						target = dataX;
+						CommonUtil.startLoading(1,seconds);
+						id1 = obj.cabinetId1;
+						cab1.show(id1);
+					}
+				}
+			}
+			
+			/**
+			 * 机柜设备安装成功联动
+			 */ 
+			private function buildSuccCabShow(event:AppEvent):void {
+				// ---------------- 先关掉机柜2-----------------
+				if (id2 != -1) {
+					cab2.closeCabinet();
+				}
+				var obj:Object = event.data;
+				if (id1 == obj.cabinetId && obj.type == "show") {
+					cab1.waveEuipment(obj);
+				} else {
+					if(id1 != -1) {
+						cab1.closeCabinet();
+					}
+					CommonUtil.startLoading(1,seconds);
+					id1 = obj.cabinetId;
+					oneHasLoaded = true;
+					cab1.show(obj.cabinetId);
+					target = obj;
+					waveEqmt = true;
+				}
+			}
+			
+			private function eqmtDeleteSucc(event:AppEvent):void {
+				var obj:Object = event.data;
+				if (id1 == obj.cabinetId) {
+					if (obj.type == "cabinet") {
+						cab1.closeCabinet();
+					} else {
+						cab1.show(obj.cabinetId);
+					}
+				} else if (id2 == obj.cabinetId) {
+					if (obj.type == "cabinet") {
+						cab2.closeCabinet();
+					} else {
+						cab2.show(obj.cabinetId);
+					}
+				}
+			}
+			
+			private function cabinetRefresh(event:AppEvent):void {
+				cabinetIds = event.data as ArrayCollection;
+				loadPortIndex = 0;
+				var i:int;
+				// 第一个几个未载入
+				if (id1 == -1) {
+					loadPortIndex = 1;
+					if (id2 != -1) {
+						for (i = 0; i < cabinetIds.length; i++) {
+							if (id2 == cabinetIds.getItemAt(i)) {
+								loadPort = true;
+								cab2.show(id2);
+								break;
+							}
+						}
+					}
+				} else {
+					// 判断第一个是否要刷新（cabinetIds包含id1）
+					for (i = 0; i < cabinetIds.length; i++) {
+						if (id1 == cabinetIds.getItemAt(i)) {
+							loadPort = true;
+							cab1.show(id1);
+							break;
+						}
+					}
+					// 如果第一个机柜不需要刷新，判断第二个是否要刷新（cabinetIds包含id2）
+					if (!loadPort) {
+						loadPortIndex = 1;
+						if (id2 != -1) {
+							for (i = 0; i < cabinetIds.length; i++) {
+								if (id2 == cabinetIds.getItemAt(i)) {
+									loadPort = true;
+									cab2.show(id2);
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+			/**
+			 * 机柜管理图到展示图联动
+			 */
+			private function mngDiaFind(event:AppEvent):void {
+				var obj:Object = event.data;
+				if (obj.cabinetIndex == 0) {
+					cab1.mngFindShow(obj);
+				} else {
+					cab2.mngFindShow(obj);
+				}
+				
+			}
+		]]>
+	</fx:Script>
+	<s:Scroller id="scr1" x="10" y="45" width="710" height="100%" interactionMode="touch">
+		<gokei:Cabinet id="cab1" y="40" cabinetIndex="0"/>
+	</s:Scroller>
+	<s:Scroller id="scr2" x="720" y="45" width="710" height="100%" interactionMode="touch">
+		<gokei:Cabinet id="cab2" y="40" cabinetIndex="1"/>
+	</s:Scroller>
+</s:Module>

@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:gokei="widgets.UserSetting.*" initialize="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="rsRemote" destination="roleService" fault="onFault(event)">
+			<s:method name="getAllRoles" result="getAllRolesResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="usRemote"  destination="userService" fault="onFault(event)">
+			<s:method name="addUser" result="addUserResult(event)" />
+			<s:method name="getUserById" result="getUserByIdResult(event)"/>
+			<s:method name="modifyUser" result="modifyUserResult(event)" />
+			<s:method name="modifyUserX" result="modifyUserResult(event)" />
+			<s:method name="getRandomRfid" result="getRandomRfidResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="rfidRemote" destination="rfidWriter" fault="onFault(event)">
+			<s:method name="writeRfid"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1" property="text" required="true" source="{userId}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<gokei:ComboValidator id="v3"  required="true" property="selectedItem" source="{roleId}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+		<mx:StringValidator id="v4" property="text" required="true" source="{name1}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.entitys.User;
+			import com.gokei.managers.MD5;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.resources.ResourceManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			
+			[Bindable]
+			public var userViewStack:UserViewStack;
+			[Bindable]
+			private var allRoles:ArrayCollection;
+			private var validerror:Array;
+			private var user:User;
+			private var _rfids:String;
+			private var changeRfid:Boolean;
+			
+			private function init():void{
+				user = new User();
+				validerror = new Array();
+				validerror.push(v1);
+				validerror.push(v3);
+				validerror.push(v4);
+				rsRemote.getAllRoles();
+				AppEvent.addListener(EventType.WRITE_RFID_SUCC,writeRfidSucc);
+				AppEvent.addListener(EventType.WRITE_RFID_FAIL,writeRFIDfail);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			private function writeRfidSucc(event:AppEvent):void{
+//				Alert.show("身份卡密钥成功写入","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00124"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				cancel();
+			}
+			
+			private function writeRFIDfail(event:AppEvent):void{
+//				Alert.show("身份卡密钥写入失败","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00080"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				cancel();
+			}
+			
+			private function refresh(event:AppEvent):void{
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[15] == item){
+						rsRemote.getAllRoles();
+						break ;
+					}
+				}
+			}
+			
+			public function set rfids(value:String):void{
+				this._rfids = value;
+				rfid.text = _rfids;
+			}
+			private function getAllRolesResult(event:ResultEvent):void{
+				allRoles = event.result as ArrayCollection;
+//				roleId.prompt = "请选择";
+				roleId.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				roleId.errorString = "";
+			}
+			
+			private function addUserResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == -1){
+//					Alert.show("用户名和名字已被占用","提示");	
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00125"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));	
+					return ;
+				}else if(i == -2){	
+//					Alert.show("名字已被占用","提示"); 
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00126"),ResourceManager.getInstance().getString("ViewerStrings","T00001")); 
+					return ;
+				}else if(i == -3){
+//					Alert.show("用户名已被占用","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00127"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}else if(i == 1){
+					//刷新 告警用户列表 工作单 配线单用户列表
+					var obj : Object = { arr :[ EventType.REFRESH_ID[0],EventType.REFRESH_ID[2],EventType.REFRESH_ID[4] ] };
+					AppEvent.dispatch(EventType.REFRESH,obj);
+					userViewStack.allUser.usRemote.getAllUsers();
+//					Alert.show("用户创建成功，您确定把密钥写入身份卡吗?",
+//						"提示",
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00128"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+						Alert.YES|Alert.NO,
+						null,
+						judgeDel);
+				}else{
+					cancel();
+//					Alert.show("添加失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00015"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			private function judgeDel(event:CloseEvent):void{
+				if(event.detail == Alert.YES){
+					//确定写入
+					rfidRemote.writeRfid(rfid.text);
+				}else{
+					cancel();
+				}
+			}
+			private function getUserByIdResult(event:ResultEvent):void{
+				user = event.result as User;
+				userId.text = user.userId;
+				//用户组
+				for(var i:int=0;i<allRoles.length;i++){
+					if(user.roleId == allRoles.getItemAt(i).id){
+						roleId.selectedIndex = i;
+						break;
+					}
+				}
+				//password.text = MD5.hash(user.password);
+				name1.text = user.name;
+				department.text = user.department;
+				email.text = user.email;
+				rfid.text = user.rfid;
+				mobId.text = user.mobId;
+				tel.text = user.tel;
+				post.text = user.post;
+				remark.text = user.remark;
+			}
+			
+			private function modifyUserResult(event:ResultEvent):void{
+				var i:int = event.result as int;	
+				if(i == 1){
+					if(changeRfid){
+//						Alert.show("您确定把密钥写入身份卡吗?",
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00129"),
+							"",
+							Alert.YES|Alert.NO,
+							null,
+							judgeDel);
+					}else{
+//						Alert.show("修改成功！","提示");		
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00053"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));		
+						cancel();
+					}
+					userViewStack.allUser.usRemote.getAllUsers();
+					//刷新 告警用户列表 工作单 配线单用户列表
+					var obj : Object = { arr :[ EventType.REFRESH_ID[0],EventType.REFRESH_ID[2],EventType.REFRESH_ID[4] ] };
+					AppEvent.dispatch(EventType.REFRESH,obj);
+				}else{
+//					Alert.show("修改失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00016"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					cancel();
+				}
+			}
+			
+			/**
+			 * 添加用户
+			 * */
+			public function addUser():void{
+				//用户名（不可重复）、密码、用户组、姓名（不可重复）必填项	
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;			
+				if(validForm){
+					if(!CommonUtil.checkUserName(userId.text)){
+//						Alert.show("用户名格式不正确，请重新输入！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00081"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return;
+					}
+					if (!CommonUtil.checkEmailAddress(email.text)) {
+						return;
+					}
+					user.userId = userId.text;
+					user.password = MD5.hash(password.text);
+					user.roleId = roleId.selectedItem.id;
+					user.name = name1.text;
+					user.department = department.text;
+					user.email = email.text;
+					user.rfid = rfid.text;
+					user.mobId = mobId.text;
+					user.tel = tel.text;
+					user.post = post.text;
+					user.remark = remark.text;
+					usRemote.addUser(user);
+				}
+			}
+			
+			public function cancel():void{
+				userId.text = ""
+				name1.text = "";
+				if (currentState == 'add'){
+					password.text = "000000";
+				} else {
+					password.text = "";
+				}
+				department.text = "";
+				post.text = "";
+				tel.text = "";
+				email.text = "";
+				rfid.text = "";
+				mobId.text = "";
+				remark.text = "";
+				userId.errorString = "";
+				name1.errorString = "";
+				password.errorString = "";
+				userViewStack.selectedChild = userViewStack.nav1;
+			}
+			
+			public function getUserById(userId:String):void{
+				usRemote.getUserById(userId);
+			}
+			/**
+			 * 编辑用户
+			 * */
+			public function editUser():void{
+				//用户名（不可重复）、密码、用户组、姓名（不可重复）必填项	
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;
+				var _user:User = new User();
+				if(validForm){
+					if (!CommonUtil.checkEmailAddress(email.text)) {
+						return;
+					}
+					_user.userId = userId.text;
+					_user.roleId = roleId.selectedItem.id;
+					_user.name = name1.text;
+					_user.department = department.text;
+					_user.email = email.text;
+					_user.rfid = rfid.text;
+					_user.mobId = mobId.text;
+					_user.tel = tel.text;
+					_user.post = post.text;
+					_user.remark = remark.text;
+					if (password.text == ""){
+						//原密码不变 
+						usRemote.modifyUserX(_user);
+					}else {
+						//已修改密码
+						_user.password = MD5.hash(password.text);
+						usRemote.modifyUser(_user);
+					}
+				}
+			}
+			
+			private function changeRFID():void{
+				butRFID.includeInLayout = true;
+				usRemote.getRandomRfid();
+				changeRfid = true;
+			}
+			
+			private function getRandomRfidResult(event:ResultEvent):void{
+				rfid.text = event.result as String;
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:states>
+	<s:State name="add"/>
+	<s:State name="edit"/>
+	</s:states>
+	<s:Label id="label" color="yellow" x="10"/>
+	<s:HGroup paddingTop="2">
+		<s:Form width="50%" textAlign="right">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00279')}" required="true" height="30" requiredIndicatorSource="assets/images/require.png">
+				<s:TextInput id="userId" width="150" textAlign="left" maxChars="10" editable.edit="false"/> 
+			</s:FormItem>
+			
+			<s:FormItem id="form" label.add="{ResourceManager.getInstance().getString('ViewerStrings','T00281')}" height="30" label.edit="{ResourceManager.getInstance().getString('ViewerStrings','T00280')}">
+				<s:TextInput id="password" width="150" textAlign="left" text.add="000000" displayAsPassword.add="false" displayAsPassword.edit="true" maxChars="50" restrict="^\u4e00-\u9fa5"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00282')}" required="true" height="30" requiredIndicatorSource="assets/images/require.png">
+				<s:DropDownList id="roleId" width="150" dataProvider="{allRoles}" labelField="name" textAlign="left" prompt="请选择"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00283')}" required="true" height="30" requiredIndicatorSource="assets/images/require.png">
+				<s:TextInput id="name1" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00284')}" height="30" width="200">
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:TextInput id="rfid" width="150" textAlign="left" editable="false" maxChars="8"/>
+				<s:Button id="butRFID" label="{ResourceManager.getInstance().getString('ViewerStrings','T00285')}" width="48" x="155" includeIn="edit" click="changeRFID()"/>
+				<s:Button width="48" x="155" visible="false" includeIn="add"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" height="30">
+				<s:TextInput id="remark" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+		</s:Form>
+		<s:Form width="50%" x="300" textAlign="right">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00275')}"  height="30">
+				<s:TextInput id="department" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00278')}" height="30">
+				<s:TextInput id="tel" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+		
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00276')}" height="30">
+				<s:TextInput id="post" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+			
+			<s:FormItem label="E-Mail："  height="30">
+				<s:TextInput id="email" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00277')}" textAlign="left"  height="30">
+				<s:TextInput id="mobId" width="150" textAlign="left" maxChars="50"/>
+			</s:FormItem>
+			
+		</s:Form>
+	</s:HGroup>
+	<s:FormItem x="220" y="228">
+		<s:layout>
+			<s:HorizontalLayout/>
+		</s:layout>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click.add="addUser()" click.edit="editUser()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="cancel()"/>
+	</s:FormItem>
+</s:Group>

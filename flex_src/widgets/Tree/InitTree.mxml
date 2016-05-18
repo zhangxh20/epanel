@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 安装图
+
+// @Author zhang
+// @Version v1.0
+// @Date 2012-09
+///////////////////////////////////////////////////////////////////////////
+-->
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" 
+		 xmlns:gokeiX="widgets.Tree.*" 
+		 xmlns:comp="com.gokei.components.*"
+		 creationComplete="init()" width="100%" height="100%">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="getInstallationGraphDataByCompanyId" result="loadTree(event)" />
+		</s:RemoteObject>
+		
+		<fx:XML id="myMenuData1">
+			<root>
+				<menuitem label="链接到机柜展示图"/>
+			</root>
+		</fx:XML>
+		
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.controls.Menu;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.events.MenuEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import spark.components.ToggleButton;
+			
+			[Bindable]
+			private var xmlList:XMLList;
+			public var xml:XML;
+			public var toggle:ToggleButton;
+			public var companyId:int;
+			public var bindPopUp:BindPopUp = new BindPopUp();
+			private var imageList : TreeImageList = new TreeImageList();
+			private var _mainTreeObj:Object;
+			private var obj:Object;
+			private var _flag : Boolean ;//安装树形图未初始化
+			private var _mainTree:MaintainTree;
+			private var myMenu:Menu;
+			private var point1:Point = new Point();
+			//设备配置之后 显示上一步的操作 并展开
+			public var eqmtId:int = -1; //设备ID 也就是机柜ID
+			public var buildingId:int = -1 ; //建筑Id
+			public var buildingCode:String = "";
+			
+			public function set mainTreeObj(obj:Object):void {
+				_mainTreeObj = obj;
+				if(_flag){
+					mainBindInit();
+				}
+			}
+			
+			public function set mainTree(value : MaintainTree):void{
+				this._mainTree = value;
+			}
+			
+			public function set flag(value :Object):void{
+				this._flag = value;
+			}
+			
+			private function init():void {
+				remote.getInstallationGraphDataByCompanyId(companyId);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			/**
+			 * 展开所有树的节点
+			 * */
+			public function expandTree(value:int):void{
+				tree.validateNow();
+				if(value == 1){
+					//收缩
+					tree.expandChildrenOf(xml,false);
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+				}else{
+					tree.expandChildrenOf(xml,true);
+				}
+			}
+			
+			private function refresh(event:AppEvent):void{
+				//创建设备成功之后 刷新安装图 展示
+				var data : Object = event.data.obj as Object;
+				if(data){
+					buildingId = data.buildingId;
+					eqmtId = data.cabinetId;
+				}
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[8] == item){
+						remote.getInstallationGraphDataByCompanyId(companyId);
+						loading.visible = false;
+						break ;
+					}
+				}
+			}
+			
+			 //初始化绑定按钮
+			private function mainBindInit():void{
+				var xml :XML = tree.selectedItem as XML;
+				if(_mainTreeObj && xml){
+					if(_mainTreeObj.isBound == 0 && _mainTreeObj.parent != 'no' && _mainTreeObj.type == xml.@type){
+						bindBtn.enabled = true;
+						bindBtn.alpha = 1.0;
+					}else{
+						bindBtn.enabled = false;
+						bindBtn.alpha = 0.2;
+					}
+				}
+				
+			}
+			
+			private function loadTree(event:ResultEvent):void {
+				loading.visible = false;
+				var xmlStr:String = event.result as String;
+				xml = new XML(xmlStr);
+				xmlList = new XMLList(xml);
+				trace(xmlList);
+				tree.callLater(function():void{
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+//					if(_mainTree.pushResult){
+//						tree.expandChildrenOf(xml,true);
+//					}
+					//遍历XML 如果eqmtID不在此XML中 这是删除操作，展开相应的节点
+					var newXml : XMLList = xmlList[0].company[0].building;
+					if(eqmtId == -1)return;
+					var bool:Boolean = false;
+					for each (var item : XML in newXml){
+						if(buildingId == item.@ID || buildingCode == item.@code){
+							tree.expandItem(item,true);
+							for each(var item1 : XML in item.children()){ //遍历建筑下面的机柜
+								if(eqmtId == item1.@ID){
+									tree.expandItem(item1,true);
+									bool = true;
+									break;
+								}
+							}
+						}
+						if (bool)break;
+					}
+					eqmtId = -1;
+					buildingId = -1;
+					buildingCode = "";
+				});
+			}
+			
+			private function iconfunc(item:Object):Class {
+				return CommonUtil.iconfunc(item);
+			}
+			
+			public function initBtn():void{
+				bindBtn.enabled = false;
+				bindBtn.alpha = 0.2;
+				config.enabled = false;
+				config.alpha = 0.2;
+				configCabel.enabled = false;
+				configCabel.alpha = 0.2 ;
+			}
+			
+			private function treeSelect(event:ListEvent):void {
+				if(tree.selectedItem == null) return;
+				var xml:XML = tree.selectedItem as XML;
+				obj = new Object();
+				obj.id = xml.@ID; //设备ID
+				obj.treeType = 1;
+				obj.uNo = xml.@uNo;
+				obj.cabinetId = xml.@cabinetId;
+				obj.isBound = xml.@isBound;
+				obj.cabinetCode = xml.@cabinetCode; //机柜编号
+				obj.buildingCode = xml.@buildingCode; //建筑编号
+				initBtn();
+				//切换到机柜展示图
+				if(xml.@type == 'company' || xml.@type == 'building'){
+					
+				}else{
+					myMenu = Menu.createMenu(tree, myMenuData1, false);
+					myMenu.addEventListener(MenuEvent.ITEM_CLICK, function(evt:MenuEvent):void{
+						AppEvent.dispatch(EventType.BASEMAP_CHANGE, 3);
+						if(xml.@type == 'cabinet'){
+							AppEvent.dispatch(EventType.CABINET_SHOW,xml.@ID);
+						}else{
+							var obj : Object = new Object();
+							obj.cabinetId = xml.@cabinetId;
+							obj.uNo = xml.@uNo;
+							obj.type = "show";
+							AppEvent.dispatch(EventType.BUILD_SUCC_CABSHOW,obj);
+						}
+					});
+					myMenu.labelField = "@label";
+					point1.x = mouseX - 110;
+					point1.y = mouseY - 8;
+					point1 = tree.localToGlobal(point1);
+					myMenu.show(point1.x + 100, point1.y + 25);
+					config.enabled = true;
+					config.alpha = 1.0;
+				}
+				if (xml.@type == "controller") {
+					obj.type = xml.@type;
+					obj.assetsId = xml.@assetsId;
+					obj.controllerIp = xml.@ip;
+					obj.buildingId = xml.parent().parent().@ID;
+				} else if (xml.@type == "collector") {
+					obj.type = xml.@type;
+					obj.assetsId = xml.@assetsId;
+					obj.collectorCode = xml.@code;
+					obj.collectorSeqNo = xml.@equCode;
+					obj.buildingId = xml.parent().parent().@ID;
+					obj.scannerSeqNo = xml.@scannerSeqNo;
+				} else if (xml.@type == "shelf") {
+					obj.type = xml.@type;
+					obj.assetsId = xml.@assetsId;
+					obj.shelfSeqNo = xml.@antennaCode;
+					obj.buildingId = xml.parent().parent().@ID;
+					obj.mngPort = xml.@mngPort;
+					if(xml.@typeX == 0 || xml.@typeX == 2){
+						//主干  交换机 能够进行静态配线
+						configCabel.enabled = true;
+						configCabel.alpha = 1.0;
+					}
+				}else if(xml.@type == 'cabinet'){
+					obj.buildingId = xml.parent().@ID;
+				}else{
+					obj.type = 'other';
+				}
+				if(xml.@type == 'netEquipment'){
+					configCabel.enabled = true;
+					configCabel.alpha = 1.0;
+				}
+				mainBindInit();
+				obj.name = xml.@name;
+				obj.cabinetId = xml.@cabinetId;
+				obj.uNo = xml.@uNo;
+				obj.assetsName = xml.@assetsName;
+				obj.assetsId = xml.@assetsId;
+				obj.uHoldCount = xml.@uHoldCount;
+				AppEvent.dispatch(EventType.TREE_SELECT,obj);
+			}
+			
+			private function bind():void {
+				PopUpManager.addPopUp(bindPopUp,this);
+				bindPopUp.scanObj = _mainTreeObj;
+				bindPopUp.inputObj = obj;
+				bindPopUp.mainTree = _mainTree;
+				bindPopUp.initTree = this;
+				setTimeout(function():void{
+					AppEvent.dispatch(EventType.TREE_SELECT,_mainTreeObj);
+					AppEvent.dispatch(EventType.TREE_SELECT,obj);
+				},100);
+				bindPopUp.x = 400;
+				bindPopUp.y = 400;
+				bindBtn.enabled = false;
+				bindBtn.alpha = 0.2;
+			}
+			
+			private function labelFunc(item:Object):String{
+				return CommonUtil.labelfunc(item,'init');
+			}
+			
+			protected function configEqmt(index : int):void{
+				var xml:XML = tree.selectedItem as XML;
+				var obj:Object = new Object();
+				if(xml.@type == "shelf"){
+					if(xml.@typeId == 'GLZNJ' || xml.@typeId == 'TLZNJ'){
+						obj.type = "smartShelf";
+					}else{
+						obj.type = xml.@type + "";
+					}
+				}else{
+					obj.type = xml.@type + "";
+				}
+				obj.id = int(xml.@ID);
+				obj.isBound = xml.@isBound;
+				obj.index = index;
+				obj.cabinetId = xml.@cabinetId;
+				AppEvent.dispatch(AppEvent.WIDGET_RUN,7);
+				setTimeout(function():void{
+					AppEvent.dispatch(EventType.CONFIG_SEND,obj);
+				},800);
+				//记录下 当前选中父对象的设备类型 ，设备ID
+				if(xml.@type == 'cabinet'){
+					eqmtId = xml.@ID;
+					buildingId = xml.parent().@ID;
+				}else{
+					eqmtId = xml.parent().@ID;
+					buildingId = xml.parent().parent().@ID;
+				}
+				config.enabled = false;
+				config.alpha = 0.2;
+				configCabel.enabled = false;
+				configCabel.alpha = 0.2;
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:VGroup width="100%" height="100%">
+		<gokeiX:AutoSizeTree id="tree" dataProvider="{xmlList}" width="100%" height="96%" showRoot="false" 
+							 horizontalScrollPolicy="auto" iconFunction="iconfunc" itemClick="treeSelect(event)" labelFunction="labelFunc" >
+		</gokeiX:AutoSizeTree>
+		
+		<s:HGroup width="100%" height="4%" horizontalAlign="right" verticalAlign="middle">
+			<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00027')}">
+			<s:Button id="bindBtn" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00027')}" click="bind()" enabled="false" icon="{TreeImageList.bindIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2"/>
+			</s:HGroup>
+			<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00252')}">
+				<s:Button id="config" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00252')}" enabled="false" icon="{TreeImageList.eqmtConfigIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" click="configEqmt(0)" alpha="0.2"/>
+			</s:HGroup>
+			<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00074')}">
+				<s:Button id="configCabel" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00074')}" enabled="false" icon="{TreeImageList.configCabelIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" click="configEqmt(1)" alpha="0.2"/>
+			</s:HGroup>
+		</s:HGroup>
+	</s:VGroup>
+	<comp:Loading id="loading" type="1" x="{(width - loading.width)/2}" y="{(height - loading.height)/2}" />
+</s:Group>

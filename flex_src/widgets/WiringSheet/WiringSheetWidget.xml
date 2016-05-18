@@ -1,0 +1,11 @@
+<?xml version="1.0" ?>
+<configuration>
+	<buttons>
+		<button id="17" name="generalWiresheet"/>
+		<button id="18" name="delWireSheet"/>
+		<button id="19" name="exportOwnHistoryWireSheet"/>
+		<button id="20" name="exportHistoryWireSheet"/>
+		<button id="21" name="queryOwnWireSheet"/>
+		<button id="22" name="queryWireSheet"/>
+	</buttons>
+</configuration>

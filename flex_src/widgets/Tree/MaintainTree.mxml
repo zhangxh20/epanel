@@ -1,0 +1,1154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:gokei="widgets.Tree.*" 
+		 xmlns:comp="com.gokei.components.*"
+		 creationComplete="init()" width="100%" height="100%">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="mergeDBwizScannedEqmts" result="scanLoadTree(event)"/>
+			<s:method name="sendCollectorBoundMsgAgain" result="sentAgainResult(event)"/>
+			<s:method name="cancelBoundController" result="cancelResult(event)"/>
+			<s:method name="cancelBoundCollector" result="cancelResult(event)"/>
+			<s:method name="cancelBoundShelf" result="cancelResult(event)"/>
+			<s:method name="sendInstallationJumpsScanOrder" result="scanCabelResult(event)"/>
+			<s:method name="replaceController" result="replaceControllerResult(event)"/>
+			<s:method name="getScannedControllerInfos" result="getScannedControllerInfosResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="gsRemote" destination="gatewayService" fault="onFault(event)">
+			<s:method name="scanByGatewayId"/>
+		</s:RemoteObject>
+		<s:Resize id="expandEffect1" target="{treeWidget.wTemplate}" widthTo="{treeWidget.wTemplate.width + 500}"/>
+		<s:Resize id="expandEffect2" target="{treeWidget.wTemplate}" widthTo="{treeWidget.wTemplate.width - 500}"/>
+		<fx:XML id="myMenuData1">
+			<root>
+				<menuitem label="链接到机柜展示图"/>
+			</root>
+		</fx:XML>
+
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.controls.Menu;
+			import mx.core.IVisualElement;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.events.MenuEvent;
+			import mx.events.TreeEvent;
+			import mx.managers.PopUpManager;
+			import mx.resources.ResourceManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			import spark.components.ToggleButton;
+			
+			[Bindable]
+			public var treeWidget:TreeWidget;
+			[Bindable]
+			private var xmlList:XMLList;
+			public var scanXml:XML; 
+			private var xmlStr:String;
+			public var companyId:int;
+			//配置文件设置的 timeOut = 60;
+			public var timeOut:int;
+			private var gatewayId:int ;
+			
+			public var initTree:InitTree = new InitTree();
+			public var addShelfInColl:AddShelfInColl = new AddShelfInColl();
+			private var selectedType:SelectedType = new SelectedType();
+			private var scanCabelWin : ScanCableWin = new ScanCableWin();
+			private var numInputWin : NumInputWin = new NumInputWin();
+			
+			// 为了避免错误 定义多个timer
+			private var timer:Timer = new Timer(0);
+			// 扫描的设备总个数
+			private var eqmtCount:int = 0;
+			private var scanNum : Object = new Object(); //记录相应网关下 设备个数
+			// 新增配线架  key :antennaCode value : uNo
+			private var initObj:Object;
+			private var shelfInit:Object;
+			private var equCode:String;
+			private var freshObj : Object = new Object(); //里面的属性 为了刷新维护图而用
+			private var expandFlag:Boolean;
+			private var data:Object;
+			private var point1:Point = new Point();
+			private var myMenu:Menu;
+			private var controllerId:int;
+			//用户输入的预计扫描控制器的个数
+			private var numInput : int = 0;
+			//删除之后 显示上一步的操作 并展开
+			public var parentId1:int = -1 ; //父对象ID (控制器ID)
+			public var parentId2:int = -1 ; //父对象ID (采集器ID)
+			public var parentId:int = -1; //网关ID
+			public var pushResult:Boolean = false;
+			private var scanFlag : Boolean ; //点击扫描  添加通道
+			public var loadFlag : Boolean = false; // 已经载入
+			
+			
+			private function init():void {
+				remote.mergeDBwizScannedEqmts(companyId);
+				// 未载入完毕
+				loadFlag = false;
+				// ----------------刷新------------------
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				// ----------------扫描设备推送------------------
+				AppEvent.addListener(EventType.SCAN_PUSH,scanPush);
+				// ----------------绑定------------------
+				AppEvent.addListener(EventType.BIND,pushBind);
+				// ----------------解除绑定------------------
+				AppEvent.addListener(EventType.CANCEL_BIND,cancelBindPush);
+				// ----------------跳线扫描推送成功------------------
+				AppEvent.addListener(EventType.SCAN_CABLE_PUSH,scanCablePush);
+				// ----------------跳线扫描推送失败------------------
+				AppEvent.addListener(EventType.SCAN_CABLE_FAULT,scanCableFault);
+				// ----------------跳线扫描推送失败(扫描的跳线中，至少有二根跳线的Rfid相同)------------------
+				AppEvent.addListener(EventType.JUMP_SCAN_RFID_FAULT,jumpScanRFIDFault);
+				// ----------------更换ARM推送------------------
+				AppEvent.addListener(EventType.REPLACE_ARM_PUSH,replaceARMPush);
+			}
+			
+			private function pushBind(event:AppEvent):void {
+				if ((timer && timer.running) || (initTree.bindPopUp.timer && initTree.bindPopUp.timer.running)
+					|| (selectedType.timer && selectedType.timer.running)
+				) {
+					pushResult = true;
+					//绑定成功之后 刷新网络树形图，维护树形图
+					var data : Object = { arr :[EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],EventType.REFRESH_ID[8]]};
+					AppEvent.dispatch(EventType.REFRESH,data);
+					var obj:Object = event.data as Object;
+					if(obj.type == 9 || obj.type == 10){
+//						Alert.show("绑定成功！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00048"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						//绑定成功之后 刷新机柜图
+						data = new Object();
+						var cabinetId : int = int(HashTableManager.instance.get("cabinetId"));
+						data.cabinetId = cabinetId;
+						AppEvent.dispatch(EventType.EQMT_DELETE_SUCC,data);
+					}
+					if (initTree.bindPopUp.timer){
+						initTree.bindPopUp.timer.reset();
+						initTree.bindPopUp.timer.stop();
+					}
+					if (selectedType.timer) {
+						selectedType.timer.reset();
+						selectedType.timer.stop();
+					}
+					CommonUtil.stopLoading();
+					timer.stop();
+					initBtn();
+				}
+			}
+			
+			private function cancelBindPush(event:AppEvent):void {
+				pushResult = true;
+				var data : Object = { arr :[EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],EventType.REFRESH_ID[8]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+				var obj:Object = event.data as Object;
+				if(obj.type == 12 || obj.type == 13){
+//					Alert.show("解除绑定成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00049"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					//刷新机柜图 
+					data = new Object();
+					var cabinetId : int = int(HashTableManager.instance.get("cancelCabId"));
+					data.cabinetId = cabinetId;
+					AppEvent.dispatch(EventType.EQMT_DELETE_SUCC,data);
+				}
+				timer.stop();
+				CommonUtil.stopLoading();
+				initBtn();
+			}
+			
+			//初装跳线扫描
+			private function scanCablePush(event : AppEvent): void{
+				if (timer.running || scanCabelWin.timer.running) {
+					timer.stop();
+					CommonUtil.stopLoading();
+					//展示告警页面
+					scanCabelWin.timer.stop();
+					scanCabelWin.obj = event.data as Object;
+					PopUpManager.addPopUp(scanCabelWin,this,true);
+					scanCabelWin.x = 300;
+					scanCabelWin.y = 300;
+					scanCabelWin.init();
+				}
+			}
+			
+			private function scanCableFault(event : AppEvent):void{
+				if (timer.running || scanCabelWin.timer.running) {
+					timer.stop();
+					CommonUtil.stopLoading();
+					scanCabelWin.timer.stop();
+//					Alert.show("扫描跳线失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00072"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function jumpScanRFIDFault(event : AppEvent):void{
+				if (timer.running || scanCabelWin.timer.running) {
+					timer.stop();
+					scanCabelWin.timer.stop();
+					CommonUtil.stopLoading();
+//					Alert.show("扫描的跳线中，至少有二根跳线的RFID相同！","提示");
+					var str:String = "";
+					str += ResourceManager.getInstance().getString("ViewerStrings","E00073") + "\n";
+					var arr:ArrayCollection = event.data.jumpScanNoDataShelfList as ArrayCollection;
+					// 显示所有RFID重复端口的位置信息
+					for each(var item:Object in arr) {
+						str += ResourceManager.getInstance().getString("ViewerStrings","T00176") + item.ccode + ",";
+						str += ResourceManager.getInstance().getString("ViewerStrings","T00177") + item.uNo + ",";
+						str += ResourceManager.getInstance().getString("ViewerStrings","T00103") + item.code + "\n";
+					}
+					Alert.show(str,ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function replaceARMPush(event : AppEvent):void{
+				if (timer.running) {
+					timer.stop();
+					CommonUtil.stopLoading();
+//					Alert.show("更换主机成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00074"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			//告警-- 维护树形图  相应的变红
+			public function eqmtAlarm(obj : Object) : void{
+				var type : String = obj.type;
+				var flag : Boolean = false;
+				if(obj.warning == true){
+					flag = true; //告警页面切换过来
+				}else{
+					flag = false; //已修复切换
+				}
+				switch(type){
+					case "controller" :
+						parentId = obj.gatewayId;
+						parentId1 = obj.id;
+						handlerXml(flag,type);
+						break ;
+					case "collector" :
+						//根据网关ID 控制器ID 寻找扫描仪   默认展开 
+						parentId = obj.gatewayId;
+						parentId1 = obj.controllerId;
+						parentId2 = obj.id;
+						handlerXml(flag,type);
+						break ;
+					case "shelf" :
+						parentId = obj.gatewayId;
+						parentId1 = obj.controllerId;
+						parentId2 = obj.collectorId;
+						var shelfId : int = obj.id
+						handlerXml(flag,type,shelfId);
+						break ;
+				}
+			}
+			
+			private function scanEqmtTimer(event:TimerEvent):void{
+				remote.getScannedControllerInfos(gatewayId.toString());
+			}
+			
+			private function scanPush(event:AppEvent):void{
+				//每次推送上来 设备个数都增加（前提是：点击扫描）
+				//timer 已经启动
+				eqmtCount += event.data.insEqmtCount;
+				if(scanFlag){
+					//设备扫描
+				}else{
+					timer = new Timer(0);
+					timer.delay = 3000;
+					timer.addEventListener(TimerEvent.TIMER,timerHandler);
+				}
+				timer.reset();
+				timer.start();
+				CommonUtil.reset();
+			}
+			
+			private function timerHandler(event:TimerEvent):void{
+				timer.removeEventListener(TimerEvent.TIMER,function():void{});
+//				Alert.show("扫描设备成功，当前扫描上来的设备个数为:"+eqmtCount+"个！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00108")+eqmtCount+ResourceManager.getInstance().getString("ViewerStrings","I00109"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				remote.mergeDBwizScannedEqmts(companyId);
+				eqmtCount = 0;
+				timer.stop();
+			}
+			
+			private function refresh(event:AppEvent):void{
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[7] == item){
+						remote.mergeDBwizScannedEqmts(companyId);
+						loading.visible = true;
+						break ;
+					}
+				}
+			}
+			
+			//每次告警--维护图 把warning属性默认为false
+			private function initAttribute(newXml : XMLList):void{
+				for each(var xml : XML in newXml){
+					xml.@warning = 'false';
+					initAttribute(xml.children());
+				}
+			}
+			//处理remote查出来的xml  该展开的展开  告警切过来的变红 其实一个参数就够 为了区分 多个
+			private function handlerXml(alarm : Boolean , type : String = null,shelfId : int = -1):void{
+				var newXml : XMLList = xmlList[0].company[0].gateway;
+				initAttribute(newXml);
+				for each (var _item : XML in newXml){
+					if(parentId == _item.@ID){
+						//展开网关
+						tree.expandItem(_item,true);
+						for each (var item2 : XML in _item.children()){
+							if(parentId1 == item2.@ID){
+								//展开控制器
+								tree.expandItem(item2,true);
+								if(alarm && type == 'controller'){
+									item2.@warning = 'true';
+									break ;
+								} else if (!alarm && type == 'controller') {
+									item2.@warning = 'repair';
+									break ;
+								}
+								for each(var item3 : XML in item2.children()){
+									//展开采集器
+									if(parentId2 == item3.@ID){
+										tree.expandItem(item3,true);
+										if(alarm && type == 'collector'){
+											item3.@warning = 'true';
+										} else if (!alarm && type == 'collector') {
+											item3.@warning = 'repair';
+										}
+										//点亮配线架
+										for each (var item4 : XML in item3.children()){
+											if (item4.@ID == shelfId) {
+												if (alarm && type == 'shelf') {
+													item4.@warning = 'true';
+												} else if (!alarm && type == 'shelf'){
+													item4.@warning = 'repair';
+												}
+											}
+										}
+										break ;
+									}
+								}
+								break;	
+							}
+						}
+						break;
+					}
+				}
+				parentId = -1;
+				parentId1 = -1;
+				parentId2 = -1;
+			}
+			
+			private function scanLoadTree(event:ResultEvent):void {
+				loading.visible = false;
+				xmlStr = event.result as String;
+				scanXml = new XML(xmlStr);
+				trace(scanXml);
+				xmlList = new XMLList(scanXml);
+				tree.callLater(function():void{
+				tree.selectedIndex = 0;
+				tree.expandItem(tree.selectedItem,true);
+				if(pushResult){
+					//绑定 取消绑定 配置 之后 展开相应节点
+					handlerXml(false);
+					pushResult = false;
+					return ;
+				}
+				
+				//如果是主动推送上的 则展开
+				for(var i:int = 0;i<tree.selectedItem.children().length();i++){
+					var item:XML = tree.selectedItem.children()[i];
+					var key:String = item.@ID;
+					if (scanNum[key] == null) {
+						scanNum[key] = item.children().length();
+					} else {
+						if (scanNum[key] != item.children().length()){
+							expand(item);
+						}
+						scanNum[key] = item.children().length();
+					}
+				}
+				
+				// 点击扫描 推送上来的设备
+				for (var j:int = 0; j < tree.selectedItem.children().length(); j++) {
+					var item1:XML = tree.selectedItem.children()[j];
+					if (item1.@ID == gatewayId) {
+						//如果网关ID相同 打开网关, 判断控制器的绑定状态
+						tree.expandItem(item1,true);
+						for each ( var contItem : XML in item1.children()){
+							if(contItem.@isBound == 1){
+								//如果控制器绑定 展开控制器 判断下面采集器的绑定状态
+								tree.expandItem(contItem,true);
+								for each (var collItem : XML in contItem.children()){
+									if(collItem.@isBound == 1){
+										tree.expandItem(collItem,false);
+									}else{
+										expand(collItem);
+									}
+								}
+							}else{
+								//如果控制器未绑定 则展开所有的设备
+								expand(contItem);
+								break ;
+							}
+						}
+					}
+				}
+				loadFlag = true;
+				});
+			}
+			
+			private function expand(xml:XML):void {
+				if (xml == null) return;
+				tree.expandItem(xml,true);
+				for (var i:int = 0; i < xml.children().length(); i++) {
+					var child:XML = xml.children()[i];
+					expand(child);
+				}
+			}
+			
+			private function installTree():void {
+				if(tb.selected){
+					btnSelected(addShelfBtn,link,initTree,true);
+					initTree.companyId = companyId;
+					initTree.mainTree = this;
+				}else{
+					removeAll(initTree);
+				}
+			}
+			
+			/**
+			 * 对于已绑定的采集器 如果下面的配线架未满3个 则可以继续添加
+			 * */
+			private function addShelf():void{
+				if(addShelfBtn.selected){
+					btnSelected(tb,link,addShelfInColl,false);
+					addShelfInColl.maintainTree = this;
+					addShelfInColl.initParameter(initObj,equCode,data,shelfInit,freshObj);
+				}else{
+					removeAll(addShelfInColl);
+				}
+			}
+			
+			/**
+			 * 扫描上来的设备 点击关联  选择设备类型 填入数据库
+			 * */
+			private function addScanEqmt():void{
+				if(link.selected){
+					btnSelected(tb,addShelfBtn,selectedType,false);
+					selectedType.maintainTree = this;
+				}else{
+					selectedType.cancel(1);
+				}
+			}
+			
+			/**
+			 *  扫描 安装树形图  添加配线架 3个toggleButton的点击 控制widget拉伸、一些基本设置等...
+			 *  @param flag 控制安装树形图 展开按钮
+			 * */
+			private function btnSelected(btn1:ToggleButton,btn2:ToggleButton,elements:IVisualElement,flag:Boolean):void{
+				group2.removeAllElements();
+				if(!btn1.selected && !btn2.selected){
+					expandEffect1.play();
+				}
+				btn1.selected = false;
+				btn2.selected = false;
+				group2.includeInLayout = true;
+				group.percentWidth = 50;
+				loading.x = (group.width - loading.width)/2;
+				group2.percentWidth = 50;
+				treeWidget.mainGroup.percentWidth = 50;
+				treeWidget.genGroup.percentWidth = 50;
+				treeWidget.genGroup.includeInLayout = true;
+				treeWidget.genGroup.visible = true;
+				if(flag){
+					treeWidget.genGroup.visible = true;
+				}else{
+					treeWidget.genGroup.visible = false;
+				}
+				group2.addElement(elements);
+			}
+			
+			public function removeAll(element:IVisualElement):void{
+				expandEffect2.play();
+				group.percentWidth = 100;
+				loading.x = (width - loading.width)/2 ;
+				treeWidget.mainGroup.percentWidth = 100;
+				treeWidget.genGroup.includeInLayout = false;
+				tb.selected = false;
+				addShelfBtn.selected = false;
+				link.selected = false;
+				group2.includeInLayout = false;
+				group2.removeElement(element);
+			}
+			
+			/**
+			 * 当group2里面为addShelfInColl 点击除了采集器以外的类型 关闭group2
+			 * */
+			private function closeGroup(type : String):void{
+				if( addShelfBtn.selected && (type == 'gateway' || type == 'controller' || type == 'shelf')){
+					removeAll(addShelfInColl);
+				}
+			}
+			
+			public function scanTreeEqmt(num : int):void{
+				numInput = num ;
+				gsRemote.scanByGatewayId(gatewayId);
+				//点击设备扫描 变为true
+				scanFlag = true;
+				//给timer加延时
+				timer = new Timer(0);
+				timer.delay = timeOut * 1000; // 1分钟
+				timer.start();
+				// 点击扫描设备，开始计时，扫描完毕之后，执行此方法。
+				timer.addEventListener(TimerEvent.TIMER,scanEqmtTimer);
+				CommonUtil.startLoading(0,60);
+			}
+			
+			private function scanTree(value : String):void {
+				if(value == 'eqmt'){
+					PopUpManager.addPopUp(numInputWin,this,true);
+					numInputWin.x = 300;
+					numInputWin.y = 300;
+					numInputWin.tree = this;
+				}else{
+					//跳线扫描 取个控制 进行扫描
+					var controllerId : int = (tree.selectedItem as XML).@ID;
+					remote.sendInstallationJumpsScanOrder(controllerId);
+					//开始计时。
+					timer = new Timer(0);
+					timer.delay = timeOut * 400 ; // 24秒
+					timer.addEventListener(TimerEvent.TIMER,scanCabelTimer);
+					timer.start();
+					CommonUtil.startLoading(0,24);
+				}
+			}
+			
+			private function scanCabelTimer(event : TimerEvent):void{
+				//计时完毕
+				timer.reset();
+				timer.stop();
+				CommonUtil.stopLoading();
+//				Alert.show("扫描跳线失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00072"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+			}
+			
+			private function iconfunc(item:Object):Class {
+				return CommonUtil.iconfunc(item);
+			}
+			
+			private function labelFunc(item:Object):String{
+				return CommonUtil.labelfunc(item,'main');
+			}
+			//点击树形图的三角箭头时 触发该事件
+			private function isItemClose(event:TreeEvent):void{
+				initBtn();
+			}
+			
+			public function initBtn():void{
+				replaceARMBtn.enabled = false;
+				replaceARMBtn.alpha = 0.2;
+				addShelfBtn.enabled = false;
+				addShelfBtn.alpha = 0.2;
+				sentAg.enabled = false;
+				sentAg.alpha = 0.2;
+				cancelBind.enabled = false;
+				cancelBind.alpha = 0.2;
+				scanEqmt.enabled = false;
+				scanEqmt.alpha = 0.2;
+				config.enabled = false;
+				config.alpha = 0.2;
+				scanCable.enabled = false;
+				scanCable.alpha = 0.2;
+				gatewayBtn.enabled = false;
+				gatewayBtn.alpha = 0.2;
+				configCabel.enabled = false;
+				configCabel.alpha = 0.2 ;
+			}
+			
+			private function treeSelect(event:ListEvent):void {
+				if(tree.selectedItem == null) return;
+				var xml:XML = tree.selectedItem as XML;
+				var obj:Object = new Object();
+				obj.treeType = 0;
+				obj.uNo = xml.@uNo;
+				obj.isBound = xml.@isBound;
+				obj.name = xml.@name;
+				var cabientId : int = obj.cabinetId = xml.@cabinetId;
+				HashTableManager.instance.put("cancelCabId",cabientId);
+				initBtn();
+		//		var lir:IListItemRenderer = event.itemRenderer;
+				//切换到机柜展示图
+				if(xml.@type == 'company' ){
+					gatewayBtn.enabled = true;
+					gatewayBtn.alpha = 1.0;
+					gatewayWin.comName = xml.@name;
+					gatewayWin.companyId = xml.@ID;
+				}else if(xml.@type == 'gateway'){
+					
+				}else{ 
+					if(xml.@isBound == 1){
+						myMenu = Menu.createMenu(tree, myMenuData1, false);
+						myMenu.addEventListener(MenuEvent.ITEM_CLICK, function(evt:MenuEvent):void{
+							AppEvent.dispatch(EventType.BASEMAP_CHANGE, 3);
+							var obj : Object = new Object();
+							obj.cabinetId = xml.@cabinetId;
+							obj.uNo = xml.@uNo;
+							AppEvent.dispatch(EventType.BASEMAP_CHANGE,3);
+							AppEvent.dispatch(EventType.BUILD_SUCC_CABSHOW,obj);
+						});
+						myMenu.labelField = "@label";
+						point1.x = mouseX - 110;
+						point1.y = mouseY - 8;
+						point1 = tree.localToGlobal(point1);
+						myMenu.show(point1.x + 100, point1.y + 25);
+						
+						config.enabled = true;
+						config.alpha = 1.0;
+					}
+				}
+				if (xml.@type == "controller") {
+					controllerId = obj.id = xml.@ID;
+					obj.type = xml.@type;
+					obj.assetsId = xml.@assetsId;
+					obj.cabinetCode = xml.@cabinetCode; //机柜编号
+					obj.buildingCode = xml.@buildingCode;
+					obj.controllerIp = xml.@ip;
+					obj.gatewayId = xml.parent().@ID;
+					obj.gatewayIp = xml.parent().@ip; //网关IP
+					obj.gatewayMac = xml.parent().@mac;
+					obj.gatewayPort = xml.parent().@port;
+					obj.parentEquipmentId = xml.@cabinetId;
+					obj.code = xml.@code;
+					obj.equCode = xml.@equCode;
+					closeGroup(xml.@type);
+					if(xml.@isBound == 1){
+						//处理已绑定的控制器 ，可更换ARM
+						replaceARMBtn.enabled = true;
+						replaceARMBtn.alpha = 1.0;
+						scanCable.enabled = true;
+						scanCable.alpha = 1.0;
+						var cancelColl : Boolean = true;
+						for(var j:int=0; j < xml.children().length();j++){
+							if(xml.child("collector")[j].@isBound == 1 || xml.child("collector")[j].@isBound == 2){
+								cancelColl = false;
+								break ;
+							}
+						}
+						if(cancelColl){
+							cancelBind.enabled = true;
+							cancelBind.alpha = 1.0;
+						}
+					}
+					if(xml.@isActivated == 1){
+						//该控制器已经被激活 则不可继续跳线扫描
+						scanCable.enabled = false;
+						scanCable.alpha = 0.2;
+					}
+				} else if (xml.@type == "collector") {
+					obj.id = xml.parent().@ID;
+					obj.type = xml.@type;
+					obj.assetsId = xml.@assetsId;
+					obj.buildingCode = xml.parent().@buildingCode;
+					obj.cabinetCode = xml.@cabinetCode; //机柜编号
+					freshObj.controllerId = obj.parentEquipmentId = xml.parent().@ID;
+					obj.collectorCode = xml.@code;
+					obj.controllerIp = xml.parent().@ip;
+					freshObj.gatewayId = obj.gatewayId = xml.parent().parent().@ID;
+					obj.gatewayIp = xml.parent().parent().@ip;
+					obj.gatewayMac = xml.parent().parent().@mac;
+					obj.gatewayPort = xml.parent().parent().@port;
+					obj.collectorSeqNo = xml.@equCode;
+					freshObj.collectorId = obj.collectorId = xml.@ID;
+					obj.cabinetId = xml.@cabinetId;
+					if(xml.parent().@isBound == 0){
+						//如果当前设备的父设备没有进行绑定 
+						obj.parent = 'no';
+					}
+					//判断采集器下面的配线架个数 如果为3个 则可添加配线架
+					if(xml.@isBound == 1 && xml.child("shelf").length() < 3){
+						addShelfBtn.enabled = true;
+						addShelfBtn.alpha = 1.0;
+						equCode = xml.parent().@ip + "-" + xml.@equCode;
+						data = obj;
+						//获得采集器下面配线架的天线编号
+						initObj = new Object();
+						shelfInit = new Object();
+						for(var i:int = 0;i<xml.children().length();i++){
+							var key : String = xml.child("shelf")[i].@antennaCode;
+							var value : String = xml.child("shelf")[i].@uNo + "U";
+							initObj[key] = value;
+							var shelfName : String = xml.child("shelf")[i].@assetsName;
+							shelfInit[key] = shelfName;
+							data[key] = xml.child("shelf")[i].@typeX;
+						}
+						if(addShelfBtn.selected){
+							addShelfInColl.initParameter(initObj,equCode,data,shelfInit,freshObj);
+							addShelfInColl.cancel();
+						}
+					}
+					if(xml.@isBound == 2){
+						var send : Boolean;
+						for(var k:int = 0;k<xml.children().length();k++){
+							if(xml.child("shelf")[k].@isBound == 2){
+								send = true;
+							}else{
+								send = false;
+								break ;
+							}
+						}
+						if(send){
+							sentAg.enabled = true;
+							sentAg.alpha = 1.0;
+						}
+					}
+					if(xml.@isBound == 1){
+						//如果当前的扫描仪已绑定，判断子节点是否都已经取消绑定
+						var canShelf:Boolean = true;
+						for(var m:int=0;m<xml.children().length();m++){
+							if(xml.child("shelf")[m].@isBound == 1 || xml.child("shelf")[m].@isBound == 2){
+								canShelf = false;
+								break ;
+							}
+						}
+						if(canShelf){
+							cancelBind.enabled = true;
+							cancelBind.alpha = 1.0;
+						}
+					}
+				} else if (xml.@type == "shelf") {
+					obj.id = xml.parent().parent().@ID;
+					obj.type = xml.@type;
+					obj.assetsId = xml.@assetsId;
+					obj.buildingCode = xml.parent().parent().@buildingCode;
+					obj.cabinetCode = xml.@cabinetCode; //机柜编号
+					obj.cabinetId = xml.parent().@cabinetId;
+					obj.parentEquipmentId = obj.collectorId = xml.parent().@ID;
+					obj.shelfSeqNo = xml.@antennaCode;
+					obj.controllerIp = xml.parent().parent().@ip;
+					obj.controllerId = xml.parent().parent().@ID;
+					obj.collectorSeqNo = xml.parent().@equCode;
+					obj.gatewayId = xml.parent().parent().parent().@ID;
+					obj.gatewayIp = xml.parent().parent().parent().@ip;
+					obj.gatewayPort = xml.parent().parent().parent().@port;
+					obj.gatewayMac = xml.parent().parent().parent().@mac;
+					closeGroup(xml.@type);
+					//父对象未绑定
+					if(xml.parent().@isBound == 0){
+						obj.parent = 'no';
+					}
+					//只有在绑定完的设备 才能够取消绑定
+					if(xml.@isBound == 1){
+						cancelBind.enabled = true;
+						cancelBind.alpha = 1.0;
+					}
+					if(xml.@isBound == 1 && (xml.@typeX == 0 || xml.@typeX == 2)){
+						//主干  交换机 能够进行静态配线
+						configCabel.enabled = true;
+						configCabel.alpha = 1.0;
+					}
+				}else if(xml.@type == "gateway"){
+					obj.type = 'other';
+					gatewayId = xml.@ID;
+					closeGroup(xml.@type);
+					//如果网关下面 有一个设备处于绑定中  则不可进行第二次扫描
+					var bool : Boolean = true;
+					for each (var item : XML in xml.children()){
+						if(item.@isBound == 2){
+							bool = false;
+							break ;
+						}else{
+							for each (var item1 : XML in item.children()){
+								if(item1.@isBound == 2){
+									//采集器
+									bool = false;
+									break ;
+								}else{
+									for each (var item2 : XML in item1.children()){
+										if(item2.@isBound == 2){
+											bool = false;
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+					if(bool){
+						scanEqmt.enabled = true;
+						scanEqmt.alpha = 1.0;
+					}
+				}else{
+					obj.type = 'other';
+					closeGroup(xml.@type);
+				}
+				if(tb.selected){
+					initTree.flag = true;	
+				}
+				initTree.mainTreeObj = obj;
+				AppEvent.dispatch(EventType.TREE_SELECT,obj);
+				if(link.selected && xml.@isBound == 0){
+					AppEvent.dispatch(EventType.MAIN_SELECTED_TYPE_TABLE,obj);
+				}else{
+					if(link.selected){
+						selectedType.cancel(0);
+					}
+				}
+				if(xml.@type == 'netEquipment'){
+					configCabel.enabled = true;
+					configCabel.alpha = 1.0;
+				}
+			}
+			
+			
+			private function tbClick():void{
+				if(expandFlag){
+					expandFlag = false;
+//					tbImage.toolTip = '展开';
+					tbImage.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00129");
+					tbImage.source = "assets/images/closeX.png";
+					//收缩
+					tree.expandChildrenOf(scanXml,false);
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+				}else{
+					expandFlag = true;
+					tbImage.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00130");
+					tbImage.source = "assets/images/expand.png";
+					tree.expandChildrenOf(scanXml,true);
+				}
+			}
+			
+			/**
+			 * 当绑定失败时  重新发送
+			 * */
+			private function sendAgain():void{
+				var xml:XML = tree.selectedItem as XML;
+				var controllerIp : String = xml.parent().@ip;
+				var gatewayId:String = xml.parent().parent().@ID;
+				var gatewayIp:String = xml.parent().parent().@ip;
+				var gatewayPort:int = xml.parent().parent().@port;
+				var collectorSeqNo:String = xml.@equCode;
+				remote.sendCollectorBoundMsgAgain(controllerIp,gatewayId,gatewayIp,gatewayPort,collectorSeqNo);
+			}
+			
+			private function sentAgainResult(event:ResultEvent):void {
+				timer = new Timer(0);
+				timer.delay = timeOut * 400;
+				timer.start();
+				timer.addEventListener(TimerEvent.TIMER,sentAgainTimer);
+				CommonUtil.startLoading(0,24);
+			}
+			
+			private function sentAgainTimer(event:TimerEvent):void{
+				timer.stop();
+//				Alert.show("重新发送失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				CommonUtil.stopLoading();
+				initBtn();
+			}
+			
+			
+			private function judgeCancel():void{
+//				Alert.show("您确定要解除绑定吗?",
+//					"提示",
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00047"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+					Alert.YES|Alert.NO,
+					null,
+					cancelBindEqmt);
+			}
+			
+			private function cancelBindEqmt(event:CloseEvent):void{
+				if (event.detail == Alert.YES) {
+					var xml:XML = tree.selectedItem as XML;
+					if(xml.@type == 'controller'){
+						remote.cancelBoundController(int(xml.@ID));
+						parentId = xml.parent().@ID;
+					}else if(xml.@type == 'collector'){
+						remote.cancelBoundCollector(int(xml.@ID));
+						parentId = xml.parent().parent().@ID;
+						parentId1 = xml.parent().@ID;
+					}else{
+						remote.cancelBoundShelf(int(xml.@ID));
+						parentId = xml.parent().parent().parent().@ID;
+						parentId1 = xml.parent().parent().@ID;
+						parentId2 = xml.parent().@ID;
+					}
+					//解绑之后 刷新安装图 展开
+					initTree.buildingCode = xml.@buildingCode;
+					initTree.eqmtId = xml.@cabinetId;
+				}
+			}
+			
+			/**
+			 * 取消绑定结果
+			 * */
+			private function cancelResult(event:ResultEvent):void{
+				var flag : Boolean = event.result as Boolean;
+				var xml : XML = tree.selectedItem as XML;
+				if(!flag){
+//					Alert.show("解除绑定失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00092"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				CommonUtil.startLoading(0,60);
+				if(xml.@type == 'collector' || xml.@type == 'shelf'){
+					//解除绑定控制器，采集器，需要推送
+					timer = new Timer(0);
+					timer.delay = timeOut * 1000;
+					timer.start();
+					timer.addEventListener(TimerEvent.TIMER,cancelBindTimer);
+				}else{
+					//主机除外
+					var obj : Object = { arr :[EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],EventType.REFRESH_ID[8]]}
+					AppEvent.dispatch(EventType.REFRESH,obj);
+					CommonUtil.stopLoading();
+//					Alert.show("解除绑定成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00049"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					data = new Object();
+					var cabinetId : int = xml.@cabinetId;
+					data.cabinetId = cabinetId;
+					AppEvent.dispatch(EventType.EQMT_DELETE_SUCC,data);
+					initBtn();
+				}
+			}
+			
+			private function cancelBindTimer(event:TimerEvent):void{
+				timer.stop();
+				CommonUtil.stopLoading();
+//				Alert.show("解除绑定失败!","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00092"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				initBtn();
+			}
+			
+			private function configEqmt(index : int):void{
+				parentId = -1;
+				pushResult = true;
+				var xml:XML = tree.selectedItem as XML;
+				var obj:Object = new Object();
+				if(xml.@type == "shelf"){
+					if(xml.@typeId == 'GLZNJ' || xml.@typeId == 'TLZNJ'){
+						obj.type = "smartShelf";
+					}else{
+						obj.type = xml.@type + "";
+					}
+				}else{
+					obj.type = xml.@type + "";
+				}
+				obj.id = int(xml.@ID);
+				obj.isBound = xml.@isBound;
+				obj.index = index;
+				obj.cabinetId = xml.@cabinetId;
+				AppEvent.dispatch(AppEvent.WIDGET_RUN,7);
+				setTimeout(function():void{
+					AppEvent.dispatch(EventType.CONFIG_SEND,obj);
+				},800);
+				//写在这里是为了设备配置--删除之后 能够展开相应的节点
+				if(xml.@type == 'controller'){
+					parentId = xml.parent().@ID; //网关ID
+				}else if(xml.@type == 'collector'){
+					parentId = xml.parent().parent().@ID; //网关ID
+					parentId1 = xml.parent().@ID; 
+				}else if(xml.@type == 'shelf'){
+					parentId = xml.parent().parent().parent().@ID; //网关ID
+					parentId1 = xml.parent().parent().@ID;
+					parentId2 = xml.parent().@ID;
+				}
+				initBtn();
+			}
+			
+			//添加网关
+			private var gatewayWin : AddGateWay = new AddGateWay();
+			private function addGateway():void{
+				PopUpManager.addPopUp(gatewayWin,this,true);
+				gatewayWin.init();
+			}
+			
+			private function replaceControllerResult(event:ResultEvent):void{
+				var flag : Boolean = event.result as Boolean;
+				timer.stop();
+				CommonUtil.stopLoading();
+				initBtn();
+				if(!flag){
+//					Alert.show("更换主机失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00076"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			/**
+			 * 更换主机
+			 * */
+			private function replaceARM():void{
+				timer = new Timer(0);
+				timer.delay = timeOut * 300; //25秒
+				timer.start();
+				timer.addEventListener(TimerEvent.TIMER,replaceARMTimer);
+				CommonUtil.startLoading(0,25);
+				remote.replaceController(controllerId);
+			}
+			
+			private function replaceARMTimer(event : TimerEvent):void{
+				timer.stop();
+				CommonUtil.stopLoading();
+//				Alert.show("更换主机失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00076"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+			}
+			
+			private function scanCabelResult(event:ResultEvent):void{
+				if(!event.result){
+//					Alert.show("扫描跳线失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00072"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					timer.stop();
+					CommonUtil.stopLoading();
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			private function getScannedControllerInfosResult(event:ResultEvent):void{
+				var array : ArrayCollection = event.result as ArrayCollection;
+				if (array.length == numInput) {
+					//扫描成功
+//					Alert.show("扫描设备成功，当前扫描上来的设备个数为:"+eqmtCount+"个！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00108")+eqmtCount+ResourceManager.getInstance().getString("ViewerStrings","I00109"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					remote.mergeDBwizScannedEqmts(companyId);
+				} else {
+					//扫描失败 弹出控制器表格
+					var contWin : ControllerTabel = new ControllerTabel();
+					contWin.x = 300;
+					contWin.y = 300;
+					PopUpManager.addPopUp(contWin,this,true);
+					var data : ArrayCollection = new ArrayCollection();
+					for (var i : int = 0 ; i < array.length ; i ++) {
+						var obj : Object = array[i];
+						data.addItem(obj);
+					}
+					contWin.array = toLabelArray(data);
+				}
+				scanFlag = false;
+				eqmtCount = 0;
+				timer.stop();
+				initBtn();
+				CommonUtil.stopLoading();
+			}
+			
+			private function toLabelArray(list:ArrayCollection):ArrayCollection {
+				var labelList:ArrayCollection = new ArrayCollection();
+				var obj:Object;
+				for (var i:int = 0; i < list.length; i ++) {
+					obj = new Object();
+					obj.no = i + 1;
+					obj.name = list.getItemAt(i).name;
+					obj.ip = list.getItemAt(i).ip;
+					labelList.addItem(obj);
+				}
+				return labelList;
+			}
+			
+		]]>
+	</fx:Script>
+	<s:HGroup width="100%" height="100%">
+		<s:Group id="group" width="100%" height="100%">
+			<s:VGroup width="100%" height="100%">
+				<gokei:AutoSizeTree id="tree" width="100%" height="98%" dataProvider="{xmlList}" showRoot="false" itemClose="isItemClose(event)"
+									horizontalScrollPolicy="auto" iconFunction="iconfunc" itemClick="treeSelect(event)" labelFunction="labelFunc">
+					<gokei:itemRenderer>
+						<fx:Component>
+							<mx:TreeItemRenderer>
+								<fx:Script>
+									<![CDATA[
+										override protected function updateDisplayList(unscaledWidth:Number, unscaledHeight:Number):void{
+											super.updateDisplayList(unscaledWidth, unscaledHeight);
+											//告警的变红
+											if(super.data){
+												var xml : XML = new XML(super.data);
+												if(xml.@warning == 'true'){
+													label.setColor(0xff0000);
+												} else if (xml.@warning == "repair"){
+													label.setColor(0xfddd02);
+												}
+											}
+										}
+									]]>
+								</fx:Script>
+							</mx:TreeItemRenderer>
+						</fx:Component>
+					</gokei:itemRenderer>
+				</gokei:AutoSizeTree>
+				<s:HGroup id="hGroup" width="100%" height="2%" horizontalAlign="right" verticalAlign="middle">
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00231')}">
+						<s:Button id="gatewayBtn" icon="{TreeImageList.addGateWayIcon}" enabled="false" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2" click="addGateway()"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00253')}">
+						<s:Button id="replaceARMBtn" icon="{TreeImageList.resetHostIcon}" enabled="false" 
+								  chromeColor="0xfffff0"  buttonMode="true" width="33.5" height="33.5" alpha="0.2" 
+								  click="{Alert.show(ResourceManager.getInstance().getString('ViewerStrings','I00110'),ResourceManager.getInstance().getString('ViewerStrings','T00001'),Alert.YES|Alert.NO,null,function(event:CloseEvent):void{
+								  if(event.detail == Alert.YES){
+								  		replaceARM();
+								  }
+								  });}"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','I00111')}">
+						<s:Button id="sentAg" enabled="false" click="sendAgain()" icon="{TreeImageList.sendAgainIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','I00112')}">
+						<s:Button id="cancelBind" enabled="false" click="judgeCancel()" icon="{TreeImageList.cancelBindIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','I00113')}">
+						<s:ToggleButton id="addShelfBtn" enabled="false" click="addShelf()" icon="{TreeImageList.addShelfIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','I00114')}">
+						<s:Button id="scanEqmt" enabled="false" icon="{TreeImageList.eqmtScanIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" click="scanTree('eqmt')" alpha="0.2"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','I00115')}">
+						<s:Button id="scanCable" enabled="false" icon="{TreeImageList.cableScanIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" click="scanTree('cable')" alpha="0.2"/>
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00252')}">
+						<s:Button id="config" enabled="false" icon="{TreeImageList.eqmtConfigIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" click="configEqmt(0)" alpha="0.2" />
+					</s:HGroup>
+					<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00074')}">
+						<s:Button id="configCabel" enabled="false" icon="{TreeImageList.configCabelIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" click="configEqmt(1)" alpha="0.2" />
+					</s:HGroup>
+				</s:HGroup>
+			</s:VGroup>
+		</s:Group>
+		<s:Group id="group2" height="100%" includeInLayout="false"/>
+	</s:HGroup>
+	
+	<s:HGroup id="mainGroup">
+		<s:ToggleButton id="tb" label="{ResourceManager.getInstance().getString('ViewerStrings','T00254')}" width="60" click="installTree()" />
+		<s:ToggleButton id="link" label="{ResourceManager.getInstance().getString('ViewerStrings','T00255')}" width="60" click="addScanEqmt()" />
+		<s:Image id="tbImage" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00129')}" click="tbClick()" source="assets/images/closeX.png" buttonMode="true"/>
+	</s:HGroup>
+	<comp:Loading id="loading" type="1" x="{(width - loading.width)/2}" y="{(height - loading.height)/2}" />
+</s:Group>

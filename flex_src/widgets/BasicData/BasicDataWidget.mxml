@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"  
+				   xmlns:company="widgets.BasicData.company.*"
+				   xmlns:building="widgets.BasicData.building.*" 
+				   xmlns:objectType="widgets.BasicData.objectType.*"
+				   widgetConfigLoaded="init()" xmlns:bd="widgets.BasicData.*">
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import mx.resources.ResourceManager;
+			
+			import flash.utils.setTimeout;
+			private function init():void	{
+				wt.resizable = false;
+			}
+			
+			private function wt_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt.resizable = false;},200);
+				
+			}
+			
+			protected function wt_closedHandler(event:Event):void
+			{
+				//初始化单位信息
+				AppEvent.dispatch(EventType.INIT_COMPANY_MESSAGE);
+				//初始化所有表格大小
+				var data : Object = { arr : [ EventType.REFRESH_ID[20],EventType.REFRESH_ID[21],EventType.REFRESH_ID[22]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<viewer:WidgetTemplate id="wt" width="740" height="360" fontFamily="{ResourceManager.getInstance().getString('ViewerStrings','Font002')}" open="wt_openHandler(event)" closed="wt_closedHandler(event)">
+		<mx:TabNavigator width="700" height="300" backgroundAlpha="0.0">
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00015')}">
+				<company:AddCompany width="50%" height="100%" x="180"/>
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00016')}">
+				<building:BuildingViewStack width="100%" height="100%"/>
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00017')}">
+				<objectType:ObjectTypeViewStack width="100%" height="100%"/>
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00354')}">
+				<bd:InfoPoint width="100%" height="100%" />
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+	</viewer:WidgetTemplate>	
+</viewer:BaseWidget>

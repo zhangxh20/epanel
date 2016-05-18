@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:GridItemRenderer xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					xmlns:s="library://ns.adobe.com/flex/spark" 
+					xmlns:mx="library://ns.adobe.com/flex/mx" clipAndEnableScrolling="true">
+	
+	<fx:Script>
+		<![CDATA[
+			import com.gokei.managers.HashTableManager;
+			
+			[Embed(source="assets/images/i_edit1.png")] 
+			[Bindable]
+			public var buttonIcon:Class;
+			
+			override public function prepare(hasBeenRecycled:Boolean):void {
+				if (!data)return;
+				if (HashTableManager.instance.get("editable") == 1)return;
+				if (data.isSysAssets == 1) {
+					editButton.visible = false;
+				} else {
+					editButton.visible = true;
+				}
+			}
+			
+			private function itemEdit():void {
+				dispatchEvent(new ProductGridEvent(ProductGridEvent.ITEM_EDIT,data));
+			}
+		]]>
+	</fx:Script>
+	<s:states>
+		<mx:State name="normal"/>
+		<mx:State name="hovered"/>
+		<mx:State name="selected"/>
+	</s:states>
+	<s:Rect  left="0" top="0" bottom="0" right="0">
+		<s:fill>
+			<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+		</s:fill>
+	</s:Rect>
+	<mx:LinkButton id="editButton"  x="5" y="5" height="30" width="30" icon="{buttonIcon}" click="itemEdit()"/>
+</s:GridItemRenderer>

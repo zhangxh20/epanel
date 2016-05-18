@@ -1,0 +1,374 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:gokei="widgets.UserSetting.*"
+				   xmlns:viewer="com.esri.viewer.*" fontFamily="宋体" 
+				   creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="ssRemote" destination="settingService" fault="onFault(event)">
+			<s:method name="getSystemSetting" result="getSystemSettingResult(event)"/>
+			<s:method name="setSystemSetting" result="setSystemSettingResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="wnRemote" destination="warnNoticeService" fault="onFault(event)">
+			<s:method name="getAllWarnNoticeInfos" result="getAllWarnNoticeInfosResult(event)"/>
+			<s:method name="updateWarnNotice" />
+		</s:RemoteObject>
+		<s:RemoteObject id="rfidRemote" destination="rfidWriter" fault="onFault(event)">
+			<s:method name="listPortChoices" result="listPortChoicesResult(event)"/>
+		</s:RemoteObject>
+		<!--
+		<gokei:ComboValidator id="v2"  property="selectedItem" source="{delayTime}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+		-->
+		<gokei:ComboValidator id="v3"  property="selectedItem" source="{worksheetTime}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+		<!--
+		<gokei:ComboValidator id="v4"  property="selectedItem" source="{rfidWriter}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+		-->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			import widgets.GeneralSetting.entity.SystemSetting;
+			
+			public var emails:ArrayCollection = new ArrayCollection([]);
+			private var systemSetting:SystemSetting = new SystemSetting();
+			private var _systemSetting:Object;
+			private var _id:int;
+			[Bindable]
+			private var time1:ArrayCollection = new ArrayCollection([
+//				{key:"1",name:"分"},{key:"2",name:"小时"}
+				{key:"1",name:ResourceManager.getInstance().getString("ViewerStrings","T00121")},{key:"2",name:ResourceManager.getInstance().getString("ViewerStrings","T00199")}
+			]);
+			[Bindable]
+			private var time2:ArrayCollection = new ArrayCollection([
+//				{key:"1",name:"小时"},{key:"2",name:"天"}
+				{key:"1",name:ResourceManager.getInstance().getString("ViewerStrings","T00199")},{key:"2",name:ResourceManager.getInstance().getString("ViewerStrings","T00200")}
+			]);
+			[Bindable]
+			private var portChoice:ArrayCollection;
+			private var userListPop:UserListPop = new UserListPop();
+			private var validerror:Array;
+			private var backUpWin : BackUp = new BackUp();
+			
+			private function init():void {
+				wt.resizable = false;
+				validerror = new Array();
+				validerror.push(v3);
+				//validerror.push(v4);
+				userListPop.generalSettingWidget = this;
+				rfidRemote.listPortChoices();
+				wnRemote.getAllWarnNoticeInfos();
+				setTimeout(function():void{
+					ssRemote.getSystemSetting();
+				},500);
+				AppEvent.addListener(EventType.INIT_GENSETTING_MESSAGE,initMessage);
+			}
+			
+			private function initMessage(event:AppEvent):void{
+				ssRemote.getSystemSetting();
+				emails = new ArrayCollection([]);
+				wnRemote.getAllWarnNoticeInfos();
+			}
+			
+			public function addUserListPop():void{
+				PopUpManager.addPopUp(userListPop,this,true);
+				userListPop.dg.checkList = emails;
+				userListPop.refresh();
+			}
+			
+			/**
+			 * 添加/修改  如果数据库中有记录 则修改 否则为插入
+			 * */
+			private function addOrModifySystem():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(validForm){
+					//系统延迟 分钟为单位
+					/* if(delayTime.selectedItem.key == 1){
+						systemSetting.delayTime = num1.value as int;
+					}else{
+						systemSetting.delayTime = (num1.value as int)*60;
+					} */
+					//工作单默认时间 小时为单位
+					if(worksheetTime.selectedItem.key == 1){
+						systemSetting.worksheetTime = num2.value as int;
+					}else{
+						systemSetting.worksheetTime = (num2.value as int)*24;
+					}
+					systemSetting.commPortIdentifier = rfidWriter.selectedItem;
+					systemSetting.id = _id;
+					systemSetting.emailSender = emailSender.text;
+					if(!CommonUtil.checkEmailAddress(emailAddress.text)){
+						return;
+					}
+					systemSetting.emailAddress = emailAddress.text;
+					systemSetting.emailUserName = emailUserName.text;
+					systemSetting.emailPassword = emailPassword.text;
+					systemSetting.smtpAddress = smtpAddress.text;
+					systemSetting.sendWsEmail = ck1.selected == true ? "1":"0";
+					systemSetting.sendWsMessage = ck2.selected == true ? "1":"0";
+					systemSetting.wsOperatorWarning = rb1.selected == true ? "1":"0";
+					ssRemote.setSystemSetting(systemSetting);
+					//取到告警Email通知文本框中的 姓名 userId
+					var userIds:Array = new Array();
+					for(var i:int=0;i<emails.length;i++){
+						var userId:String = emails.getItemAt(i).userId;
+						userIds.push(userId);
+					}
+					wnRemote.updateWarnNotice(userIds);
+				}
+			}
+			
+			private function getSystemSettingResult(event:ResultEvent):void {
+				_systemSetting = event.result as Object;
+				if(_systemSetting != null){
+					/* if(_systemSetting.delayTime<60){
+						num1.value = _systemSetting.delayTime;
+						delayTime.selectedIndex = 0;
+					}else{
+						num1.value = (_systemSetting.delayTime)/60;
+						delayTime.selectedIndex = 1;
+					} */
+					
+					if(_systemSetting.worksheetTime<24){
+						num2.value = _systemSetting.worksheetTime;
+						worksheetTime.selectedIndex = 0;
+					}else{
+						num2.value =( _systemSetting.worksheetTime)/24;
+						worksheetTime.selectedIndex = 1;
+					}
+					_id = _systemSetting.id;
+					emailSender.text = _systemSetting.emailSender;
+					emailAddress.text = _systemSetting.emailAddress;
+					emailUserName.text = _systemSetting.emailUserName;
+					emailPassword.text = _systemSetting.emailPassword;
+					smtpAddress.text = _systemSetting.smtpAddress;
+					_systemSetting.sendWsEmail == "1" ? ck1.selected = true : ck1.selected = false;
+					_systemSetting.sendWsMessage == "1" ? ck2.selected = true : ck2.selected = false;
+					_systemSetting.wsOperatorWarning == "1" ? rb1.selected = true : rb2.selected = true;
+					for(var j:int=0;j<portChoice.length;j++){
+						if(_systemSetting.commPortIdentifier == portChoice.getItemAt(j)){
+							rfidWriter.selectedIndex = j;
+							break ;
+						}
+					}
+				}
+			}
+			
+			private function setSystemSettingResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == 1){
+//					Alert.show("操作成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function listPortChoicesResult(event:ResultEvent):void{
+				portChoice = event.result as ArrayCollection;
+			}
+			
+			/**
+			 * 获取告警Email通知列表
+			 */ 
+			private function getAllWarnNoticeInfosResult(event:ResultEvent):void{
+				var str:String = "";
+				var allWarnNoticeInfo:ArrayCollection = event.result as ArrayCollection;
+				if(allWarnNoticeInfo !=null){
+					for(var i:int=0;i<allWarnNoticeInfo.length;i++){
+						if (i !=0) {
+							str += "\n";
+						}
+						str += allWarnNoticeInfo.getItemAt(i).user.name;
+						var user:Object = allWarnNoticeInfo.getItemAt(i).user;
+						emails.addItem(user);
+					}
+					waringEmail.text = str;
+				}
+			}
+			private function cancel():void{
+				AppEvent.dispatch(AppEvent.WIDGET_CLOSE,9);
+				setTimeout(function():void{AppEvent.dispatch(EventType.INIT_GENSETTING_MESSAGE)},1000);
+			}
+			
+			private function wt_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt.resizable = false;},200);
+			}
+			
+			protected function wt_closedHandler(event:Event):void
+			{
+				AppEvent.dispatch(EventType.INIT_GENSETTING_MESSAGE);
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示"); 
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+			private function OpenBackUp():void{
+				PopUpManager.addPopUp(backUpWin,this,true);
+				backUpWin.x = 300;
+				backUpWin.y = 300;
+				backUpWin.bcRemote.getConfiguration();
+			}
+			private function checkValueFunction(value:Number):String{
+				var reg : RegExp = /[0-9]/;
+				if (reg.test(value.toString())){
+					return value.toString();
+				}else {
+					return "0";
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<viewer:WidgetTemplate id="wt"  width="388" height="615" open="wt_openHandler(event)" closed="wt_closedHandler(event)">
+		<s:Group left="2" right="2">
+			<s:Rect x="5" width="98%" height="85" radiusX="5" radiusY="5">
+				<s:stroke>
+					<s:SolidColorStroke color="#696969" weight="2" />
+				</s:stroke>
+			</s:Rect>
+			<s:Form width="95%" textAlign="right">
+				<!--
+				<s:FormItem label="系统延时：" required="true" height="30" requiredIndicatorSource="assets/images/require.png">
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:NumericStepper id="num1" maximum="100.0" width="40" textAlign="left"/>
+					<s:ComboBox id="delayTime" dataProvider="{time1}" labelField="name" width="80" textAlign="left"/>
+				</s:FormItem>
+				-->
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00201')}" required="true" height="30" requiredIndicatorSource="assets/images/require.png">
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:NumericStepper id="num2" maximum="100.0" width="40" textAlign="left" valueFormatFunction="checkValueFunction"/>
+					<s:DropDownList id="worksheetTime" dataProvider="{time2}" labelField="name" width="80" textAlign="left"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00202')}" height="30">
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:CheckBox id="ck1" label="E-Mail"/>
+					<s:CheckBox id="ck2" label="{ResourceManager.getInstance().getString('ViewerStrings','T00203')}"/>
+				</s:FormItem>
+			</s:Form>
+			
+			<s:Rect x="5" y="90" width="98%" height="33" radiusX="5" radiusY="5">
+				<s:stroke>
+					<s:SolidColorStroke color="#696969" weight="2" />
+				</s:stroke>
+			</s:Rect>
+			
+			<s:Form y="78" x="34" width="95%" textAlign="right">
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00204')}" >
+					<mx:LinkButton label="{ResourceManager.getInstance().getString('ViewerStrings','T00190')}" click="OpenBackUp()"/>
+				</s:FormItem>
+			</s:Form>
+			
+			<s:Rect x="5" y="128" width="98%" height="225" radiusX="5" radiusY="5">
+				<s:stroke>
+					<s:SolidColorStroke color="#696969" weight="2" />
+				</s:stroke>
+			</s:Rect>
+			
+			<s:Form width="95%" y="115"  textAlign="right">
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00205')}" height="30">
+					<s:TextInput id="emailSender" width="130" textAlign="left" maxChars="50"/> 
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00206')}" height="30"> 
+					<s:TextInput id="emailAddress" width="130" textAlign="left" maxChars="50"/> 
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00207')}" height="30">
+					<s:TextInput id="emailUserName" width="130" textAlign="left" maxChars="50"/> 
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00208')}" height="30">
+					<s:TextInput id="emailPassword" width="130" textAlign="left" maxChars="50"/> 
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00209')}" height="30">
+					<s:TextInput id="smtpAddress" width="130" textAlign="left" maxChars="50"/> 
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00210')}" height="30">
+					<s:DropDownList id="rfidWriter" width="130" textAlign="left" dataProvider="{portChoice}" />
+				</s:FormItem>
+			</s:Form>
+			
+			<s:Rect x="5" y="358" width="98%" height="170" radiusX="5" radiusY="5">
+				<s:stroke>
+					<s:SolidColorStroke color="#696969" weight="2" />
+				</s:stroke>
+			</s:Rect>
+			
+			<s:Form width="95%"  y="350" textAlign="right">
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00211')}" height="30">
+					<s:TextArea id="waringEmail" width="100" height="100" textAlign="left" editable="false"/> 
+					<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00212')}" click="addUserListPop()"/>
+				</s:FormItem>
+			</s:Form>
+			
+			<s:Form width="95%" y="480" textAlign="right">
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00213')}" height="30">
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:RadioButton id="rb1" label="是"/>
+					<s:RadioButton id="rb2" label="否"/>
+				</s:FormItem>
+			</s:Form>
+			
+			<s:FormItem width="100%" y="527" x="80" >
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="addOrModifySystem()"/>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+			</s:FormItem>
+		</s:Group>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

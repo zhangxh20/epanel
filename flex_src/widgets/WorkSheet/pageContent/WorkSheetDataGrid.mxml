@@ -1,0 +1,639 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:gokei="widgets.WiringSheet.advancedDataGrid.*"
+		 xmlns:pageContent="widgets.WorkSheet.pageContent.*"	 
+		 xmlns:paging="widgets.WorkSheet.paging.*" initialize="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="wssRemote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="queryCreatedWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryOwnCreatedWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryUnfinishedWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryOwnUnfinishedWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryFinishedWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryOwnFinishedWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryHistoryWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="queryOwnHistoryWorkSheet" result="queryAllResult(event)"/>
+			<s:method name="exportCreatedWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportOwnCreatedWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportUnfinishedWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportOwnUnfinishedWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportFinishedWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportOwnFinishedWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportHistoryWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="exportOwnHistoryWorkSheet" result="exportWorkSheetResult(event)"/>
+			<s:method name="getWorkSheetInfoById" result="getWorkSheetInfoByIdResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.formatters.DateFormatter;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.WorkSheet.WorkSheetWidget;
+			
+			public var pageIndex:int;
+			[Bindable]
+			public var wsw:WorkSheetWidget;
+			[Bindable]
+			private var workSheetArr:ArrayCollection; //表格的数据源
+			[Bindable]
+			public var recordCount:int; //总共多少条
+			private var pageCount:int;//总共多少页	
+			public var pageNo:int = 1; //当前为第一页
+			[Bindable]
+//			public var linkArray:ArrayCollection = new ArrayCollection([{code:"cabinetShow",name:"机柜展示图"},{code:"cabinetMng",name:"机柜管理图"}]);
+			public var linkArray:ArrayCollection = new ArrayCollection([{code:"cabinetShow",name:ResourceManager.getInstance().getString("ViewerStrings","C00034")},{code:"cabinetMng",name:ResourceManager.getInstance().getString("ViewerStrings","C00035")}]);
+			public var fileName:String;
+			
+			public function init():void{
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				AppEvent.addListener(EventType.WORKSHEET_SHOW,workSheet_show);
+				//工作单完成之后 刷新统计图 （端口数量已改变）
+				AppEvent.addListener(EventType.WORKSHEET_PUSH,workSheetPush);
+				judgeRemote(pageIndex);
+			}
+			
+			private function workSheetPush(event : AppEvent):void{
+				judgeRemote(pageIndex);
+				//判断
+				if(pageIndex == 1){
+					if(wsw.butGroup2.checkBox.selected == true){
+						//刷新机柜
+						var cabinetIds : ArrayCollection = wsw.butGroup2.cabinetIds;
+						AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+					}
+				}
+				var data : Object = { arr : [EventType.REFRESH_ID[13]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			
+			private function workSheet_show(event:AppEvent):void{
+				var obj:Object = event.data;
+				var workSheetId:int = obj.workSheetId as int;
+				wssRemote.getWorkSheetInfoById(workSheetId);
+			}
+			
+			private function refresh(event:AppEvent):void{
+				if(checkBoxColunm){
+					checkBoxColunm.cloumsSelected = false;
+				}
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[5] == item) {
+						judgeRemote(pageIndex);
+					}
+				}
+			}
+			/**
+			 *  根据权限来调用相应的方法
+			 * */
+			public function judgeRemote(value:int):void{
+				if(value == 0){
+					if(wsw.flag == "true"){
+						//如果当前操作者有查看全部工作单的权限
+						wssRemote.queryCreatedWorkSheet(wsw.group1.createTimeFrom,wsw.group1.createTimeTo,wsw.group1.cabinetId,
+							wsw.group1.targetCabinetId,wsw.group1.operationName,wsw.group1.operatorName,wsw.group1.creatorName,pageNo);
+					}else if(wsw.flag == "false"){
+						//如果当前操作者有查看自己工作单的权利
+						wssRemote.queryOwnCreatedWorkSheet(wsw.group1.createTimeFrom,wsw.group1.createTimeTo,wsw.group1.cabinetId,
+							wsw.group1.targetCabinetId,wsw.group1.operationName,wsw.group1.operatorName,wsw.group1.creatorName,pageNo);			
+					}
+				}else if(value == 1){
+					if(wsw.flag == "true"){
+						wssRemote.queryUnfinishedWorkSheet(wsw.group2.createTimeFrom,wsw.group2.createTimeTo,wsw.group2.cabinetId,
+							wsw.group2.targetCabinetId,wsw.group2.operationName,wsw.group2.state,wsw.group2.operatorName,wsw.group2.creatorName,pageNo);
+					}else if(wsw.flag == "false"){
+						wssRemote.queryOwnUnfinishedWorkSheet(wsw.group2.createTimeFrom,wsw.group2.createTimeTo,wsw.group2.cabinetId,
+							wsw.group2.targetCabinetId,wsw.group2.operationName,wsw.group2.state,wsw.group2.operatorName,wsw.group2.creatorName,pageNo);
+					}
+				}else if(value == 2){
+					if(wsw.flag == "true"){
+						wssRemote.queryFinishedWorkSheet(wsw.group3.createTimeFrom,wsw.group3.createTimeTo,wsw.group3.cabinetId,
+							wsw.group3.targetCabinetId,wsw.group3.operationName,wsw.group3.operatorName,wsw.group3.creatorName,pageNo);
+					}else if(wsw.flag == "false"){
+						wssRemote.queryOwnFinishedWorkSheet(wsw.group3.createTimeFrom,wsw.group3.createTimeTo,wsw.group3.cabinetId,
+							wsw.group3.targetCabinetId,wsw.group3.operationName,wsw.group3.operatorName,wsw.group3.creatorName,pageNo);
+					}
+				}else if(value == 3){
+					if(wsw.flag == "true"){
+						wssRemote.queryHistoryWorkSheet(wsw.group4.createTimeFrom,wsw.group4.createTimeTo,wsw.group4.cabinetId,
+							wsw.group4.targetCabinetId,wsw.group4.operationName,wsw.group4.state,wsw.group4.operatorName,wsw.group4.creatorName,pageNo);
+					}else if(wsw.flag == "false"){
+						wssRemote.queryOwnHistoryWorkSheet(wsw.group4.createTimeFrom,wsw.group4.createTimeTo,wsw.group4.cabinetId,
+							wsw.group4.targetCabinetId,wsw.group4.operationName,wsw.group4.state,wsw.group4.operatorName,wsw.group4.creatorName,pageNo);
+					}
+				}
+			}
+			
+			public function exportInSystem(value:int):void{
+				if(value == 0){
+					if(wsw.exportAuth1 == "exportOwnInit"){
+						//导出自己
+						wsw.grid1.wssRemote.exportOwnCreatedWorkSheet(wsw.group1.createTimeFrom,wsw.group1.createTimeTo,wsw.group1.cabinetId,
+							wsw.group1.targetCabinetId,wsw.group1.operationName,wsw.group1.operatorName,wsw.group1.creatorName);
+					}else if(wsw.exportAuth1 == "exportInit"){
+						//导出全部
+						wsw.grid1.wssRemote.exportCreatedWorkSheet(wsw.group1.createTimeFrom,wsw.group1.createTimeTo,wsw.group1.cabinetId,
+							wsw.group1.targetCabinetId,wsw.group1.operationName,wsw.group1.operatorName,wsw.group1.creatorName);
+					}
+				}else if(value == 1){
+					if(wsw.exportAuth2 == "exportOwnNoCompleted"){
+						wsw.grid2.wssRemote.exportOwnUnfinishedWorkSheet(wsw.group2.createTimeFrom,wsw.group2.createTimeTo,wsw.group2.cabinetId,
+							wsw.group2.targetCabinetId,wsw.group2.operationName,wsw.group2.state,wsw.group2.operatorName,wsw.group2.creatorName);
+					}else if(wsw.exportAuth2 == "exportNoCompleted"){
+						wsw.grid2.wssRemote.exportUnfinishedWorkSheet(wsw.group2.createTimeFrom,wsw.group2.createTimeTo,wsw.group2.cabinetId,
+							wsw.group2.targetCabinetId,wsw.group2.operationName,wsw.group2.state,wsw.group2.operatorName,wsw.group2.creatorName);
+					}
+				}else if(value == 2){
+					if(wsw.exportAuth3 == "exportOwnCompleted"){
+						wsw.grid3.wsw.grid3.wssRemote.exportOwnFinishedWorkSheet(wsw.group3.createTimeFrom,wsw.group3.createTimeTo,wsw.group3.cabinetId,
+							wsw.group3.targetCabinetId,wsw.group3.operationName,wsw.group3.operatorName,wsw.group3.creatorName);
+					}else if(wsw.exportAuth3 == "exportCompleted"){
+						wsw.grid3.wsw.grid3.wssRemote.exportFinishedWorkSheet(wsw.group3.createTimeFrom,wsw.group3.createTimeTo,wsw.group3.cabinetId,
+							wsw.group3.targetCabinetId,wsw.group3.operationName,wsw.group3.operatorName,wsw.group3.creatorName);
+					}
+				}
+				else if(value == 3){
+					if(wsw.exportAuth4 == "exportOwnHis"){
+						wsw.grid4.wssRemote.exportOwnHistoryWorkSheet(wsw.group4.createTimeFrom,wsw.group4.createTimeTo,wsw.group4.cabinetId,
+							wsw.group4.targetCabinetId,wsw.group4.operationName,wsw.group4.state,wsw.group4.operatorName,wsw.group4.creatorName);
+					}else if(wsw.exportAuth4 == "exportHis"){
+						wsw.grid4.wssRemote.exportHistoryWorkSheet(wsw.group4.createTimeFrom,wsw.group4.createTimeTo,wsw.group4.cabinetId,
+							wsw.group4.targetCabinetId,wsw.group4.operationName,wsw.group4.state,wsw.group4.operatorName,wsw.group4.creatorName);
+					}
+				}
+			}
+			
+			private function queryAllResult(event:ResultEvent):void{
+				queryResult(event.result as Object);
+			}
+			
+			private function queryResult(obj:Object):void{
+				workSheetArr = obj.list as ArrayCollection;
+				dataGrid.dataProvider = workSheetArr;
+				if(pageIndex < 2){
+					checkBoxColunm.selectItems = new Array();
+				}
+				recordCount = obj.recordCount as int;
+				pageCount = obj.pageCount as int;
+				if(pageIndex == 0){
+//					wsw.group1.totalLabel.text = "总条数："+recordCount.toString();
+//					wsw.butGroup1.export1.label = "导出";
+					wsw.group1.totalLabel.text = ResourceManager.getInstance().getString("ViewerStrings","T00324")+recordCount.toString();
+					wsw.butGroup1.export1.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+				}else if(pageIndex == 1){
+//					wsw.group2.totalLabel.text = "总条数："+recordCount.toString();
+//					wsw.butGroup2.export2.label = "导出";
+					wsw.group2.totalLabel.text = ResourceManager.getInstance().getString("ViewerStrings","T00324")+recordCount.toString();
+					wsw.butGroup2.export2.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+				}else if(pageIndex == 2){
+//					wsw.group3.totalLabel.text = "总条数："+recordCount.toString();
+//					wsw.butGroup3.export3.label = "导出";
+					wsw.group3.totalLabel.text = ResourceManager.getInstance().getString("ViewerStrings","T00324")+recordCount.toString();
+					wsw.butGroup3.export3.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+				}else if(pageIndex == 3){
+//					wsw.group4.totalLabel.text = "总条数："+recordCount.toString();
+//					wsw.butGroup4.export4.label = "导出";
+					wsw.group4.totalLabel.text = ResourceManager.getInstance().getString("ViewerStrings","T00324")+recordCount.toString();
+					wsw.butGroup4.export4.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+				}
+				queryPage.totalPage.text = pageCount.toString();
+			}
+			
+			/**
+			 * 获取工作单Id
+			 * */
+			private function GZDId(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.id!=null){
+					return "GD"+item.id;
+				}
+				return null;
+			}
+			
+			/**
+			 * 工作单创建时间
+			 * */
+			private function createTime(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.creatTime!=null){
+					var date:Date = item.creatTime;
+					var dateFormatter:DateFormatter = new DateFormatter();
+					dateFormatter.formatString = "YYYY-MM-DD JJ:NN:SS";
+					return dateFormatter.format(date);
+				}
+				return null;
+			}
+			
+			/**
+			 * 获得建筑名称
+			 * */ 
+			private function buildingName(item:Object,column:AdvancedDataGridColumn):String{
+				// 建筑对象不为空(当端口被删除，工单日志还存在的时候为空)
+				if(item.port1Building != null && item.port1Building.name!=null){
+					return item.port1Building.name;
+				}
+				return null;
+			}
+			
+			/**
+			 *  获取机柜编号
+			 * */
+			private function cabinetCode1(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port1 != null && item.port1.parentType!=null){
+					if(item.port1.parentType == "0"){
+						return item.port1Cabinet.code;	
+					}
+				}
+				return null;
+			}
+			private function cabinetCode2(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port2 != null && item.port2.parentType!=null){
+					if(item.port2.parentType == "0"){
+						return item.port2Cabinet.code;	
+					}
+				}
+				return null;
+			}
+			
+			/**
+			 *  获取配线架类型
+			 * */
+			private function port1ObjectTypeName(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port1 != null && item.port1.parentType!=null){
+					if(item.port1.parentType == "0"){
+						//如果端口1 是在配线架上
+						return item.port1ObjectType.name;
+					}
+				}
+				return null;
+			}
+			private function port2ObjectTypeName(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port2 != null && item.port2.parentType!=null){
+					if(item.port2.parentType == "0"){
+						return item.port2ObjectType.name;
+					}
+				}
+				return null;
+			}
+			
+			/**
+			 * 获取设备编号
+			 * */
+			private function port1ParentCode(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port1 != null && item.port1.parentType!=null){
+					if(item.port1.parentType == "0"){
+						return item.port1Parent.code;
+					}
+				}
+				return null;
+			}
+			private function port2ParentCode(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port2 != null && item.port2.parentType!=null){
+					if(item.port2.parentType == "0"){
+						return item.port2Parent.code;
+					}
+				}
+				return null;
+			}
+			
+			/**
+			 * 获取U层
+			 * */
+			private function port1ParentUNO(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port1 != null && item.port1.parentType!=null){
+					if(item.port1.parentType == "0"){
+						return item.port1Parent.uNo;
+					}
+				}
+				return null;
+			}
+			private function port2ParentUNO(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port2 != null && item.port2.parentType!=null){
+					if(item.port2.parentType == "0"){
+						return item.port2Parent.uNo;
+					}
+				}
+				return null;
+			}
+			
+			/**
+			 * 获取端口号
+			 * */
+			private function port1Code(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port1 != null && item.port1.parentType!=null){
+					if(item.port1.parentType == "0"){
+						return item.port1.code;
+					}
+				}
+				return null;
+			}
+			private function port2Code(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.port2 != null && item.port2.parentType!=null){
+					if(item.port2.parentType == "0"){
+						return item.port2.code;
+					}
+				}
+				return null;
+			}
+			
+			/**
+			 * 获取动作
+			 * @return 0 添加跳线 1 删除跳线 2 变更跳线 3 换线 
+			 * */
+			private function operateName(item:Object,column:AdvancedDataGridColumn):String{
+				var str:String = item.operateFlag;
+				switch(str){
+					case "0":
+//						return "添加跳线";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00314");
+						break;
+					case "1":
+//						return "删除跳线";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00315");
+						break;
+					case "2":
+//						return "变更跳线";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00316");
+						break;
+					case "3":
+//						return "换线";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00317");
+						break;
+					default:
+						break;
+				}
+				return null;
+			}
+			
+			/**
+			 * 获取现场人员
+			 * */
+			private function operatorName(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.operator!=null){
+					var user:Object = item.operator;
+					if(user!=null){
+						return user.name;
+					}
+				}
+				return "--";
+			}
+			
+			/**
+			 * 获取系统人员
+			 * */
+			private function userName(item:Object,column:AdvancedDataGridColumn):String{
+				if(item.creator!=null){
+					var user:Object = item.creator;
+					if(user!=null){
+						return user.name;
+					}
+				}
+				return "--";
+			}
+			/**
+			 * 获取状态
+			 * */
+			private function getState(item:Object,column:AdvancedDataGridColumn):String{
+				var state:String = item.state;
+				switch(state){
+					case "1":
+//						return "已生成";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00343");
+						break;
+					case "2":
+//						return "已发送";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00344");
+						break;
+					case "3":
+//						return "已受理";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00345");
+						break;
+					case "4":
+//						return "执行中";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00350");
+						break;
+					case "5":
+//						return "已完成";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00347");
+						break;
+					case "6":
+//						return "已取消";
+						return ResourceManager.getInstance().getString("ViewerStrings","T00348");
+						break;
+					default:
+						break;
+				}
+				return null;
+			}
+			
+			/**
+			 * 分页（上一页）
+			 * */
+			public function prePage():void{
+				if(pageIndex == 0){
+					//当前为制单页面
+					checkBoxColunm.cloumsSelected = false;
+					judgePre();
+				}else if(pageIndex == 1){
+					//当前为未完成页面
+					checkBoxColunm.cloumsSelected = false;
+					judgePre();
+				}else if(pageIndex == 2){
+					//当前为已完成界面
+					judgePre();
+				}else if(pageIndex == 3){
+					//当前为历史界面
+					judgePre();
+				}
+			}
+			
+			/**
+			 * 分页（下一页）
+			 * */
+			public function nextPage():void{
+				if(pageIndex == 0){
+					checkBoxColunm.cloumsSelected = false;
+					judgeNext();
+				}else if(pageIndex == 1){
+					checkBoxColunm.cloumsSelected = false;
+					judgeNext();
+				}else if(pageIndex == 2){
+					judgeNext();
+				}else if(pageIndex == 3){
+					judgeNext();
+				}
+			}
+			/**
+			 * 分页（选择第几页）
+			 * */
+			public function selectPage():void{
+				if(pageIndex == 0){
+					checkBoxColunm.cloumsSelected = false;
+					judgeSelect();
+				}else if(pageIndex == 1){
+					checkBoxColunm.cloumsSelected = false;
+					judgeSelect();
+				}else if(pageIndex == 2){
+					judgeSelect();
+				}else if(pageIndex == 3){
+					judgeSelect();
+				}
+			}
+			
+			private function judgePre():void{
+				if(pageNo > 1){
+					pageNo--;
+					queryPage.numInput.text = pageNo.toString();
+					judgeRemote(pageIndex);
+				}
+			}
+			
+			private function judgeNext():void{
+				if(pageNo < pageCount){
+					pageNo++ ;
+					queryPage.numInput.text = pageNo.toString();
+					judgeRemote(pageIndex);
+				}
+			}
+			private function judgeSelect():void{
+				if (queryPage.numInput.text == "0" || queryPage.numInput.text == "00" || queryPage.numInput.text == "000"){
+					return ;
+				}
+				pageNo = int(queryPage.numInput.text);
+				judgeRemote(pageIndex);
+			}
+			
+			private function exportWorkSheetResult(event:ResultEvent):void{
+				fileName = event.result as String;
+				if(pageIndex == 0){
+//					wsw.butGroup1.export1.label = "下载";
+					wsw.butGroup1.export1.label = ResourceManager.getInstance().getString("ViewerStrings","I00014");
+					wsw.butGroup1.export1.enabled = true;
+				}else if(pageIndex == 1){
+//					wsw.butGroup2.export2.label = "下载";
+					wsw.butGroup2.export2.label = ResourceManager.getInstance().getString("ViewerStrings","I00014");
+					wsw.butGroup2.export2.enabled = true;
+				}else if(pageIndex == 2){
+//					wsw.butGroup3.export3.label = "下载";
+					wsw.butGroup3.export3.label = ResourceManager.getInstance().getString("ViewerStrings","I00014");
+					wsw.butGroup3.export3.enabled = true;
+				}else if(pageIndex == 3){
+//					wsw.butGroup4.export4.label = "下载";
+					wsw.butGroup4.export4.label = ResourceManager.getInstance().getString("ViewerStrings","I00014");
+					wsw.butGroup4.export4.enabled = true;
+				}
+			}
+			
+			private function getWorkSheetInfoByIdResult(event:ResultEvent):void{
+				var workSheetInfo:Object = event.result as Object;
+				dataGrid.dataProvider = workSheetInfo;
+//				wsw.group1.totalLabel.text = "总条数："+1;
+				wsw.group1.totalLabel.text = ResourceManager.getInstance().getString("ViewerStrings","T00324")+1;
+				queryPage.totalPage.text = "1";
+			}
+			
+			/**
+			 * 切换到机柜管理图，机柜展示图
+			 * */
+			public function linkCabinet(code:String):void{
+				if (!dataGrid.selectedItem){
+					return;
+				}
+				var item : Object = dataGrid.selectedItem;
+				
+				var obj:Object = new Object();
+				obj.cabinetId1 = item.port1Cabinet.id;
+				obj.uNo1 = item.port1Parent.uNo;
+				obj.portCode1 = item.port1.code;
+				obj.cabinetId2 = item.port2Cabinet.id;
+				obj.uNo2 = item.port2Parent.uNo;
+				obj.portCode2 = item.port2.code;
+				if (code == "cabinetShow"){	
+					AppEvent.dispatch(EventType.BASEMAP_CHANGE,3);
+				} else {
+					AppEvent.dispatch(EventType.BASEMAP_CHANGE,4);
+				}
+				AppEvent.dispatch(EventType.WIRING_SHEET_CABINET,obj);
+			}
+			
+			
+			public var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:states>
+		<s:State name="init"/>
+		<s:State name="noCompleted"/>
+		<s:State name="completed"/>
+		<s:State name="history"/>
+	</s:states>
+	
+	<gokei:AdvancedDataGrid id="dataGrid" width="100%" height="250" y="100"
+							alternatingItemColors="[0x353535]" color="0xffffff" hasCheck="true"
+							headerColors="[0x505050,0x303030]" headerStyleName="headText"
+							sortableColumns="false" sortExpertMode="true" textAlign="center">	
+		<gokei:groupedColumns >
+			
+			<gokei:CheckBoxColumn id="checkBoxColunm" dataField="dgSelected" width="30" itemRenderer="widgets.WiringSheet.advancedDataGrid.CheckBoxItemRenderer"
+								  headerRenderer="widgets.WiringSheet.advancedDataGrid.CheckBoxHeaderRenderer" includeIn="init,noCompleted" draggable="false" resizable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00351')}" width="95" labelFunction="GZDId" dataField="id" draggable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText.init="{ResourceManager.getInstance().getString('ViewerStrings','T00326')}" headerText.noCompleted="发送时间" headerText.completed="完成时间" headerText.history="时间" dataField="time" width="125" labelFunction="createTime" draggable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00327')}" width="80" labelFunction="buildingName" draggable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00007')}" width="370" draggable="false">
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00328')}" width="80" labelFunction="cabinetCode1" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00329')}" dataField="type1" width="100" labelFunction="port1ObjectTypeName" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00330')}" dataField="code1" width="100" labelFunction="port1ParentCode" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00331')}" dataField="U1" width="35" labelFunction="port1ParentUNO" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00332')}" dataField="area1" width="55" labelFunction="port1Code" draggable="false"/>
+			</mx:AdvancedDataGridColumnGroup>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00095')}" width="370" draggable="false">
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00333')}" width="80" labelFunction="cabinetCode2" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00334')}" dataField="type1" width="100" labelFunction="port2ObjectTypeName" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00330')}" dataField="code1" width="100" labelFunction="port2ParentCode" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00331')}" dataField="U1" width="35" labelFunction="port2ParentUNO" draggable="false"/>
+				<mx:AdvancedDataGridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00332')}" dataField="area1" width="55" labelFunction="port2Code" draggable="false"/>
+			</mx:AdvancedDataGridColumnGroup>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00335')}" dataField="handler" width="70" labelFunction="operateName" draggable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00349')}"  width="80" includeIn="noCompleted,history" labelFunction="getState" draggable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00033')}" width="80" labelFunction="operatorName" draggable="false"/>
+			<mx:AdvancedDataGridColumnGroup headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00336')}" width="80" labelFunction="userName" draggable="false"/>
+		</gokei:groupedColumns>
+	</gokei:AdvancedDataGrid>
+	<paging:QueryPage id="queryPage" x="800" y="360" dataGrid="{this}"/>
+</s:Group>

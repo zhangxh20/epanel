@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   xmlns:gokei="com.gokei.components.*"
+			   x="300" y="300" width="450" height="335"  
+			   fontSize="12" title="{ResourceManager.getInstance().getString('ViewerStrings','T00215')}" fontFamily="{ResourceManager.getInstance().getString('ViewerStrings','Font002')}" close="PopUpManager.removePopUp(this)">
+
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="userService" fault="onFault(event)">
+			<s:method name="getAllUsers" result="getAllUsersResult(event)" />
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.MoveEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			private var generalSetting:GeneralSettingWidget;
+			[Bindable]
+			private var allUsers:ArrayCollection;
+			
+			public function refresh():void{
+				remote.getAllUsers();
+				this.addEventListener(MoveEvent.MOVE,window_moveHandler);
+			}
+			public function set generalSettingWidget(_generalSetting:GeneralSettingWidget):void {
+				this.generalSetting = _generalSetting;
+			}
+			protected function getAllUsersResult(event:ResultEvent):void{
+				allUsers = event.result as ArrayCollection;
+			}
+			private function addEmail():void {
+				var str:String = "";
+				for (var i:int = 0; i < dg.checkList.length;i++) {
+					if (i !=0) {
+						str += "\n";
+					}
+					str += dg.checkList.getItemAt(i).name;
+				}
+				generalSetting.waringEmail.text = str;
+				generalSetting.emails = dg.checkList;
+				PopUpManager.removePopUp(this);
+			}
+			private function window_moveHandler(event:MoveEvent):void
+			{
+				var window:TitleWindow = event.currentTarget as TitleWindow;
+				
+				var bounds:Rectangle = new Rectangle(0, 0, stage.stageWidth, stage.stageHeight);//舞台的宽高
+				var windowBounds:Rectangle = window.getBounds(stage);//窗口的宽高
+				var x:Number;
+				var y:Number;
+				if (windowBounds.left <= bounds.left)
+					x = bounds.left;
+				else if (windowBounds.right >= bounds.right)
+					x = bounds.right - window.width;
+				else
+					x = window.x;
+				if (windowBounds.top <= bounds.top+45)
+					y = bounds.top+45;
+				else if (windowBounds.bottom >= bounds.bottom)
+					y = bounds.bottom - window.height;
+				else
+					y = window.y;
+				window.move(x, y);
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+					alertShow = 0;
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:Group left="5" right="5" top="5" bottom="5">
+		<gokei:DataGridX id="dg" x="7" y="0" width="100%" height="260" dataProvider="{allUsers}">
+			<gokei:columns>
+				<s:ArrayCollection>
+					<s:GridColumn width="26">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<gokei:CheckBoxX id="chk" x="8" y="4" />
+									<fx:Script>
+										<![CDATA[
+											override public function set data(value:Object):void {
+												chk.data = value;
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+					<s:GridColumn width="100" dataField="name" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00216')}" />
+					<s:GridColumn width="100" dataField="department" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00356')}"/>
+					<s:GridColumn width="100" dataField="email" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00218')}"/>
+					<s:GridColumn width="100" dataField="tel" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00219')}" />
+				</s:ArrayCollection>
+			</gokei:columns>
+		</gokei:DataGridX>
+		<s:HGroup y="265" x="270">
+			<s:Button  label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="addEmail()" fontSize="14"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="PopUpManager.removePopUp(this);" fontSize="14"/>
+		</s:HGroup>
+	</s:Group>
+</s:TitleWindow>

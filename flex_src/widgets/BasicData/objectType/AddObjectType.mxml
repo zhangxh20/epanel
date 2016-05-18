@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:comboVaidator="widgets.UserSetting.*"
+		 xmlns:gokei="widgets.WiringSheet.*"  initialize="init()" >
+	<fx:Declarations>
+		<s:RemoteObject id="otsRemote" destination="objectTypeService" fault="onFault(event)">
+			<s:method name="addObjectType" result="addObjectTypeResult(event)"/>
+			<s:method name="getObjectTypeById" result="getObjectTypeByIdResult(event)"/>
+			<s:method name="modifyObjectType" result="modifyObjectTypeResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="tsRemote" destination="typeService" fault="onFault(event)">
+			<s:method name="getAllTypes" result="getAllTypesResult(event)"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1"  property="text" required="true" source="{name1}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:StringValidator id="v2" property="text" required="true" source="{abbrName}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<comboVaidator:ComboValidator id="v3"  property="selectedItem" source="{parentTypeId}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+	</fx:Declarations>
+	<s:states>
+		<s:State name="add"/>
+		<s:State name="edit"/>
+	</s:states>
+	<fx:Script>
+		<![CDATA[
+			import com.gokei.components.EventType;
+			
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			EventType
+			import com.esri.viewer.AppEvent;
+			import com.gokei.managers.HashTableManager;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.FlexEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			import spark.events.IndexChangeEvent;
+			
+			import widgets.BasicData.entitys.ObjectType;
+			
+			public var objTypeViewStack:ObjectTypeViewStack;
+			
+			private var validerror:Array;
+			
+			private var objType:ObjectType = new ObjectType();
+			
+			private var i:int;
+			[Bindable]
+			private var allTypes :ArrayCollection;
+			
+			private var showTableName:String = "";
+			
+			private function init():void{
+				validerror = new Array();
+				validerror.push(v1);
+				validerror.push(v2);
+				validerror.push(v3);
+				tsRemote.getAllTypes();
+				AppEvent.addListener("freshComBoName", freshComBoName);
+			}
+			
+			private function freshComBoName(event:AppEvent):void{
+				for(var i:int=0;i<allTypes.length;i++){
+					if(objTypeViewStack.allObj.parentTypeId.selectedItem){
+						if(allTypes.getItemAt(i).id == objTypeViewStack.allObj.parentTypeId.selectedItem.id){
+							parentTypeId.selectedIndex = i;
+							break ;
+						} 
+					}
+				}
+				if(parentTypeId.selectedItem){
+					name1.enabled = true;
+					abbrName.enabled = true;
+				}
+			}
+			private function getAllTypesResult(event:ResultEvent):void {
+				allTypes = event.result as ArrayCollection;
+				freshComBoName(null);
+			}
+			
+			private function addObjectTypeResult(event:ResultEvent):void {
+				i = event.result as int;
+				if(i == 1){
+					if(objTypeViewStack.allObj.parentTypeId.selectedItem && objTypeViewStack.allObj.parentTypeId.selectedItem.id != -1){
+						objTypeViewStack.allObj.otsRemote.getObjectTypesByParentTypeId(objTypeViewStack.allObj.parentTypeId.selectedItem.id);
+					}else{
+						//获取所有大类型
+						objTypeViewStack.allObj.otsRemote.getAllObjectTypes();
+					}
+					var obj : Object = { arr : [ EventType.REFRESH_ID[11],EventType.REFRESH_ID[16],EventType.REFRESH_ID[17],EventType.REFRESH_ID[14] ]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("添加成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					cancel();
+				}else if (i == 0){
+//					Alert.show("简称重复，请重新输入!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00023"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				} 
+			}
+			private function modifyObjectTypeResult(event:ResultEvent):void{
+				i = event.result as int;
+				if(i == 1){
+					if(objTypeViewStack.allObj.parentTypeId.selectedItem && objTypeViewStack.allObj.parentTypeId.selectedItem.id != -1){
+						objTypeViewStack.allObj.otsRemote.getObjectTypesByParentTypeId(objTypeViewStack.allObj.parentTypeId.selectedItem.id);
+					}else{
+						objTypeViewStack.allObj.otsRemote.getAllObjectTypes();
+					}
+					var obj : Object = { arr : [ EventType.REFRESH_ID[11],EventType.REFRESH_ID[16],EventType.REFRESH_ID[17],EventType.REFRESH_ID[14] ]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("修改成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00053"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					cancel();
+				}else if(i == 0){
+//					Alert.show("简称重复，请重新输入!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00023"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			private function getObjectTypeByIdResult(event:ResultEvent):void{
+				objType = event.result as ObjectType;
+				name1.text = objType.name;
+				abbrName.text = objType.abbrName;
+				for(var i:int=0;i<allTypes.length;i++){
+					if(objType.parentTypeId == allTypes.getItemAt(i).id){
+						parentTypeId.selectedIndex = i;
+						break;
+					}
+				}
+				remark.text = objType.remark;
+				name1.enabled = true;
+				abbrName.enabled = true;
+			}
+			private function cancel():void{
+				name1.text = "";
+				name1.enabled = false;
+				abbrName.text = "";
+				remark.text = "";
+				name1.errorString = "";
+				abbrName.errorString = "";
+				abbrName.enabled = false;
+				parentTypeId.errorString = "";
+				objTypeViewStack.selectedChild = objTypeViewStack.nav1;
+			}
+			private function addObjType():void {
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(validForm){
+					//简称不能超过5位
+					objType.id = objType.abbrName = abbrName.text;
+					objType.name = name1.text;
+					objType.parentTypeId = parentTypeId.selectedItem.id;
+					if(showTableName != ""){
+						objType.tableName = showTableName;
+					}
+					objType.remark = remark.text;
+					otsRemote.addObjectType(objType);
+				}
+			}
+			public function getObjTypeById(objId:String):void{
+				otsRemote.getObjectTypeById(objId);
+			}
+			private function modifyObjType():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(validForm) {
+					//简称不能超过5位
+					objType.id = HashTableManager.instance.get("typeId") as String;
+					objType.abbrName = abbrName.text;
+					objType.name = name1.text;
+					objType.parentTypeId = parentTypeId.selectedItem.id;
+					objType.remark = remark.text;
+					otsRemote.modifyObjectType(objType);
+				}
+			}
+			
+			private function onChange(event:Event):void{
+				if(event.currentTarget != null){
+					name1.enabled = true;
+					abbrName.enabled = true;
+				}
+				if(parentTypeId.selectedItem.id == "SB"){
+					showTableName = "tnet_equipment";
+				}else if (parentTypeId.selectedItem.id == "QT"){
+					showTableName = "tother_cabi_eqmt";
+				} else {
+					showTableName = "";
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Label id="label" color="yellow" x="10"/>
+	<s:Group top="10" right="10" bottom="10" left="220">
+		<s:Form textAlign="right">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00060')}" required="true" requiredIndicatorSource="assets/images/require.png">
+				<s:DropDownList id="parentTypeId" textAlign="left" dataProvider="{allTypes}" labelField="name" width="150" change="onChange(event)"/>
+			</s:FormItem>
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00061')}" required="true" requiredIndicatorSource="assets/images/require.png">
+				<s:TextInput id="name1" textAlign="left" width="150" enabled="false" maxChars="50" restrict="\u4e00-\u9fa5"/>
+			</s:FormItem>
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00062')}" required="true" requiredIndicatorSource="assets/images/require.png">
+				<s:TextInput id="abbrName" textAlign="left" width="150" enabled="false" maxChars="5" restrict="A-Z a-z"/>
+			</s:FormItem>
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}">
+				<s:TextInput id="remark" textAlign="left" width="150" maxChars="200"/>
+			</s:FormItem>
+			<s:FormItem>
+				<s:layout>
+					<s:HorizontalLayout paddingLeft="-5"/>
+				</s:layout>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click.add="addObjType()"  click.edit="modifyObjType()"/>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="cancel()"/>
+			</s:FormItem>
+		</s:Form>
+	</s:Group>
+</s:Group>

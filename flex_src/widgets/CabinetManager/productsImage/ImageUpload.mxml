@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 图片上传
+
+// @Author zhang
+// @Version v1.0
+// @Date 2012-12
+///////////////////////////////////////////////////////////////////////////
+-->
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009"
+					xmlns:s="library://ns.adobe.com/flex/spark"
+					xmlns:mx="library://ns.adobe.com/flex/mx"
+					xmlns:gokei="com.gokei.components.*"
+					width="380" height="340" close="PopUpManager.removePopUp(this);cancel()"
+					creationComplete="init()" title="{ResourceManager.getInstance().getString('ViewerStrings','I00080')}">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="fileService" fault="onFault(event)">
+			<s:method name="imageUpload" result="imageUploadResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.controls.Alert;
+			import mx.core.UIComponent;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.CabinetManager.productsComponent.AddProducts;
+			
+			private var file:FileReference;
+			
+			private var fileType:FileFilter;
+			
+			private var fileArray:Array;
+			
+			private var loader:Loader;
+			
+			public var addProducts:AddProducts;
+			
+			protected function init():void{
+				file = new FileReference();
+				fileType = new FileFilter("Image","*.gif;*.jpg;*.png");
+				fileArray = new Array(fileType); 
+				loader = new Loader();
+				file.addEventListener(Event.SELECT,onSelect);
+				file.addEventListener(Event.COMPLETE,uploadComplete);
+				loader.contentLoaderInfo.addEventListener(Event.COMPLETE,loadComplete);
+			}
+			
+			/**
+			 * 选择图片
+			 */ 
+			private function onSelect(e:Event):void{
+				file.load();
+				uploadBut.enabled = true;
+				fileName.text = file.name;
+			}
+			
+			/**
+			 * 选择图片之后，载入图片
+			 */ 
+			private function uploadComplete(event:Event):void {
+				loader.loadBytes(file.data);
+			}
+			
+			/**
+			 * 载入图片，显示在面板上
+			 */ 
+			private function loadComplete(event:Event):void {
+				img.removeAllElements();
+				var ui:UIComponent = new UIComponent();
+				var bitmap:Bitmap = loader.content as Bitmap;
+				if (bitmap.width/bitmap.height > 350/180) {
+					bitmap.height = bitmap.height * 350 / bitmap.width
+					bitmap.width = 350;
+				} else {
+					bitmap.width = bitmap.width * 180 / bitmap.height;
+					bitmap.height = 180;
+				}
+				ui.addChild(bitmap);
+				img.addElement(ui);
+			}
+			
+			/**
+			 * 文件上传
+			 */ 
+			private function fileUpload():void {
+				if (keyWord.text.length == 0) {
+//					Alert.show("设备名称不能为空");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00056"));
+					return;
+				}
+				remote.imageUpload(file.data,file.name,keyWord.text,1,1);
+			}
+			
+			protected function imageUploadResult(event:ResultEvent):void{
+				var filename:String = event.result as String;
+				if(filename != ""){
+//					Alert.show("上传成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00046"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					addProducts.img = filename;
+					AppEvent.dispatch("addImageSucc");
+					cancel();
+					PopUpManager.removePopUp(this);
+				}else{
+//					Alert.show("上传失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00090"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function cancel():void{
+				fileName.text = "";
+				keyWord.text = "";
+				uploadBut.enabled = false;
+				img.removeAllElements();
+			}
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Group left="10" right="10" top="10" bottom="10" width="100%" height="100%">
+		<s:Form>
+			<s:FormItem height="25" label="{ResourceManager.getInstance().getString('ViewerStrings','T00029')}">
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:TextInput id="fileName" width="180" enabled="false"/>
+				<s:Button id="browse" label="{ResourceManager.getInstance().getString('ViewerStrings','T00030')}" click="file.browse(fileArray);"/>
+			</s:FormItem>
+			<s:FormItem height="25" label="{ResourceManager.getInstance().getString('ViewerStrings','T00173')}">
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:TextInput id="keyWord" width="180" maxChars="50"/>
+				<s:Button id="uploadBut" label="{ResourceManager.getInstance().getString('ViewerStrings','T00116')}" click="fileUpload()" enabled="false"/>
+			</s:FormItem>
+		</s:Form>
+		<s:Group id="img" y="85" width="350" height="180">
+		</s:Group>
+		<s:Label y="270" text="{ResourceManager.getInstance().getString('ViewerStrings','T00174')}"/>
+	</s:Group>
+</gokei:TitleWindowX>

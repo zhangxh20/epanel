@@ -1,0 +1,354 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" creationComplete="init()"
+		 xmlns:mx="library://ns.adobe.com/flex/mx">
+	<fx:Declarations>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.module.CabinetManager;
+			
+			import mx.collections.ArrayCollection;
+			import mx.containers.Grid;
+			import mx.controls.Alert;
+			import mx.controls.Label;
+			import mx.effects.effectClasses.WipeRightInstance;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import spark.components.Image;
+			
+			import widgets.GeneralSetting.entity.WarnNotice;
+			
+			// 机柜索引
+			public var cabinetIndex:int;
+			// 配线操作类型,默认为查询
+			private var wiringType:String = "info";
+			// 机柜U层数
+			private var uCount:int;
+			//机柜内所有设备架子集合
+			private var _eqmtList:Array;
+			
+			private var equArray:ArrayCollection = new ArrayCollection;
+			// 目标设备
+			private var targetEqmt:GridEquipment;
+			// 起始端口
+			private var firstPort:PortDrawer;
+			// 目标端口
+			private var secondPort:PortDrawer;
+			// 被选中的设备
+			private var selectedEqmt:GridEquipment;
+			// 机柜信息
+			private var cabinetInfo:Object;
+			// 跨机柜配线
+			private var doubleCabinet:Boolean = false;
+			// 机柜管理图--切换--机柜展示图  所需要的参数
+			private var portStatusInfo:Object = new Object();
+			
+			private function init():void{
+				scaleX = 0.3;
+				scaleY = 0.3;
+				// ---------------- 配线工具切换 ---------------
+				AppEvent.addListener(EventType.WIRING_OPT,function(event:AppEvent):void {
+					wiringType = event.data as String;
+				});
+				// ---------------- 跨机柜配线 ----------------
+				AppEvent.addListener(EventType.DOUBLE_CABINET,function(event:AppEvent):void {
+					doubleCabinet = event.data as Boolean;
+				});
+				addEventListener(MouseEvent.MOUSE_WHEEL,onwheel);
+				// ---------------- 跨机柜清除 ------------------
+				AppEvent.addListener(EventType.DOUBLE_CABINET_CLEAR,doubleCabinetClear);
+				AppEvent.addListener(EventType.ALARM_CABINET_MNG,alarmCabinetMng);
+			}
+			
+			public function cabinetInit(obj:Object):void{
+				cabinetInfo = obj;
+				getCabinetInfoResult();
+			}
+			
+			/**
+			 * 鼠标滚轮滚动，机柜图放大缩小
+			 * @param event 鼠标事件
+			 * @return void
+			 */ 
+			private function onwheel(event:MouseEvent):void {
+				if (event.delta < 0) {
+					if (scaleX <= 0.25) {
+						return;
+					}
+					scaleX = scaleX - 0.1;
+					scaleY = scaleY - 0.1
+				} else {
+					scaleX = scaleX + 0.1;
+					scaleY = scaleY + 0.1;
+				}
+			}
+			
+			/**
+			 * 
+			 * 机柜展示图联动到机柜管理图
+			 */ 
+			public function diaFindShow(obj:Object):void {
+				targetEqmt = _eqmtList[obj.uNo];
+				var index : Number;
+				if (obj.portIndex == 0) {
+					firstPort = targetEqmt.getPortViewByCode(obj.portCode);
+					firstPort.selected = true;
+					if (obj.status) {
+						firstPort.status = obj.status;
+					}
+					//根据端口的portNumber 来定位滚动条
+					index = (int(firstPort.portNumber)) / 8;
+				} else if (obj.portIndex == 1 ){
+					if (wiringType == 'modify') {
+						if(secondPort)secondPort.selected = false;
+						if(secondPort)secondPort.status = 1;
+						//再次点击传来的端口
+						secondPort = targetEqmt.getPortViewByCode(obj.portCode);
+						secondPort.selected = true;
+						if (obj.status) {
+							secondPort.status = obj.status;
+						}
+					} else{
+						secondPort = targetEqmt.getPortViewByCode(obj.portCode);
+						secondPort.selected = true;
+						if (obj.status) {
+							secondPort.status = obj.status;
+						}
+					}
+					
+					//根据端口的portNumber 来定位滚动条
+					index = (int(secondPort.portNumber)) / 8;
+				}
+				
+				if ( index > 3 ) {
+					targetEqmt.scroller.viewport.verticalScrollPosition = (index - 3) * 25;
+				} else {
+					targetEqmt.scroller.viewport.verticalScrollPosition = 0;
+				}
+			}
+			
+			private function alarmCabinetMng(event:AppEvent):void {
+				if (cabinetIndex == 1)return;
+				if (firstPort) {
+					firstPort.stopAlarm();
+				}
+				var obj:Object = event.data;
+				targetEqmt = _eqmtList[obj.uNo]
+				targetEqmt.showArrow();
+				firstPort = targetEqmt.getPortViewByCode(obj.portCode);
+				firstPort.startAlarm();
+			}
+			
+			private function doubleCabinetClear(event:AppEvent):void {
+				if (selectedEqmt) {
+					selectedEqmt.hiddeArrow();
+				}
+				if (targetEqmt) {
+					targetEqmt.hiddeArrow();
+				}
+				if (wiringType == "add" || wiringType == "auto") {
+					if(firstPort)firstPort.status = 0;
+					if(secondPort)secondPort.status = 0;
+				} else if (wiringType == "remove" || wiringType=="change") {
+					if (firstPort)firstPort.status = 1;
+					if (secondPort)secondPort.status = 1;
+				} else if(wiringType == "modify"){
+					if (firstPort)firstPort.status = 1;
+					if (secondPort) {
+						if (secondPort.status == 4)secondPort.status = 1;
+						if (secondPort.status == 3)secondPort.status = 0;
+					}
+				}
+				if (firstPort)firstPort.selected = false;
+				if (secondPort)secondPort.selected = false;
+				firstPort = null;
+				secondPort = null;
+			}
+	
+			/**
+			 * 载入机柜信息
+			 */ 
+			private function getCabinetInfoResult():void {
+				uCount = cabinetInfo.uCount;
+				_eqmtList = new Array();
+				// ---------------- 创建空机柜 ----------
+				createCabinet(uCount,cabinetInfo.code);
+				// ---------------- 创建所有配线架 ----------
+				createEquipment(cabinetInfo.shelfInfoList as ArrayCollection,0);
+				// ---------------- 创建所有网络设备 ----------
+				createEquipment(cabinetInfo.netEquipmentInfoList as ArrayCollection,1);
+				// ---------------- 机柜信息载入完成后，Loading画面消失 ----------
+				AppEvent.dispatch(EventType.STOP_LOADING);
+			}
+			/**
+			 * 创建机柜架子
+			 * @param uCount 机柜的总U数
+			 * @param code 机柜编号
+			 * @return void
+			 */ 
+			public function createCabinet(uCount:int,code:String):void {
+				cabinetGroup.removeAllElements();
+				var top:Image = new Image();
+				top.source = "assets/images/top.png";
+				// ---------------- 添加机柜顶 ----------
+				cabinetGroup.addElement(top);
+				var caCode:Label = new Label();
+				caCode.text = code;
+				caCode.height = 50;
+				caCode.width =400;
+				caCode.setStyle("lineBreak","explicit");
+				caCode.setStyle("maxDisplayedLines",1);
+				// ---------------- 添加机柜编号 ----------
+				cabinetGroup.addElement(caCode);
+				caCode.setStyle("fontSize",48);
+				caCode.setStyle("color",0xFFFFFF);
+				caCode.x = 450;
+				caCode.y = 40;
+				var close:Image = new Image();
+				close.width = 35;
+				close.height = 35;
+				close.useHandCursor = true;
+				close.buttonMode = true;
+				close.smooth = true;
+				close.source="assets/images/close.png";
+				// ---------------- 添加机柜关闭按钮 ----------
+				cabinetGroup.addElement(close);
+				close.x = 850;
+				close.y = 48;
+//				close.toolTip = "关闭机柜";
+				close.toolTip = ResourceManager.getInstance().getString("ViewerStrings","I00001");
+				close.addEventListener(MouseEvent.CLICK,onCloseCabinet);
+				var num:int = 87;
+				for (var i:int = 0; i < uCount;i++) {
+					var epmt:Image = new Image();
+					if (i % 2 == 0) {
+						epmt.source = "assets/images/empty1.png";
+					} else {
+						epmt.source = "assets/images/empty2.png";
+					}
+					cabinetGroup.addElement(epmt);
+					epmt.y = num;
+					var lab:Label = new Label();
+					lab.text = "" +(uCount - i);
+					cabinetGroup.addElement(lab);
+					lab.y = num + 13;
+					if ((uCount - i) < 10 ) {
+						lab.x = 30;
+					} else {
+						lab.x = 20;
+					}
+					lab.width=100;
+					lab.height = 50;
+					lab.setStyle("lineBreak","explicit");
+					lab.setStyle("maxDisplayedLines",1);
+					lab.setStyle("fontSize",40);
+					lab.setStyle("color",0xFFFFFF);
+					num += 80;
+				}
+				var bottom:Image = new Image();
+				bottom.source = "assets/images/bottom.png";
+				// ---------------- 添加机柜底 ----------
+				cabinetGroup.addElement(bottom);
+				bottom.y = num;
+			}
+			
+			/**
+			 * 添加配线架网络设备
+			 * @param list 配线架（网络设备）信息数组
+			 * @param type 设备类型
+			 * @return void
+			 */ 
+			public function createEquipment(list:ArrayCollection,type:int):void {
+				for (var i:int; i < list.length; i++) {
+					var item:Object = list.getItemAt(i);
+					var eqmt:GridEquipment = new GridEquipment();
+					eqmt.eqmtId = item.id;
+					eqmt.uNo = int(item.uNo);
+					eqmt.uHoldCount = int(item.uHoldCount);
+					eqmt.shelfType = item.type;
+					eqmt.portCount = item.portCount;
+					cabinetGroup.addElement(eqmt);
+					eqmt.width = 768; 
+					eqmt.height = 80*eqmt.uHoldCount;
+					eqmt.x = 96;
+					eqmt.y = 80 * (uCount - int(item.uNo)) + 88;
+					// ------------ 点击端口，冒泡 -------------
+					eqmt.addEventListener(GridCabinetEvent.PORT_CLICK,portClick);
+					_eqmtList[eqmt.uNo] = eqmt;
+					equArray.addItem(eqmt);
+					//显示设备标题
+					eqmt.showEqmtTitle(item.ai.brand,item.ai.name,item.ai.model);
+				}
+			}
+			
+			/**
+			 * @param obj.uNo U层
+			 * @param obj.portList 端口列表
+			 */ 
+			public function loadPortList(obj:Object):void{
+				var eqmt:GridEquipment = _eqmtList[obj.uNo];
+				eqmt.portList = obj.portList;
+			}
+		
+			public function closeCabinet():void {
+				cabinetGroup.removeAllElements();
+			}
+			
+			public function onCloseCabinet(event:MouseEvent):void{
+				AppEvent.dispatch(EventType.MNG_DIA_CABINET_CLOSE,cabinetIndex);
+			}
+			/**
+			 * 点击端口事件
+			 */ 
+			private function portClick(event:GridCabinetEvent):void {
+				if (event.portDraw.available == false) {
+					return;
+				}
+				var portDraw:PortDrawer = event.portDraw;
+				portStatusInfo.cabinetIndex = cabinetIndex;
+				portStatusInfo.uNo = event.equipment.uNo;
+				portStatusInfo.portCode = portDraw.code;
+				// ---------------- 配线工具选择【查询】 ----------
+				if (wiringType == "info") {
+					AppEvent.dispatch(EventType.DOUBLE_CABINET_CLEAR);
+					selectedEqmt = event.equipment;
+					selectedEqmt.showArrow();
+					portDraw.selected = true;
+					firstPort = portDraw;
+					AppEvent.dispatch(EventType.MNG_DIA_FIND,portStatusInfo);
+				} else {
+					AppEvent.dispatch(EventType.MNG_DIA_FIND,portStatusInfo);
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Group width="100%" height="100%"  id="cabinetGroup" />
+</s:Group>

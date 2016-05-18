@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<configuration label="Tree">
+    <!-- 单位ID -->
+	<company>1</company>
+	<!-- 系统设备可编辑，1：可编辑，0：不可编辑 -->
+	<editable>1</editable>
+</configuration>

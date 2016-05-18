@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"  xmlns:gokei="widgets.WiringSheet.*">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="wssRemote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="deleteWireSheetById" result="deleteWireSheetByIdResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.WiringSheet.WiringSheetWidget;
+			
+			[Bindable]
+			public var dataGrid:WiringSheetDataGrid;
+			
+			[Bindable]
+			public var wsw:WiringSheetWidget;	
+			private var idArr:Array;
+			public var queryGroup:QueryGroup;
+			
+			public var cabinetIds : ArrayCollection;
+			
+			
+			protected function delWiringSheet():void{
+				var array:Array = wsw.grid1.dataGrid.getSelectedItem();
+				idArr = new Array;
+				cabinetIds = new ArrayCollection();
+				for(var i:int = 0;i<array.length;i++){
+					idArr.push(array[i].id);
+					if(!cabinetIds.contains(array[i].port1Cabinet.id)){
+						cabinetIds.addItem(array[i].port1Cabinet.id);
+					}
+					if(!cabinetIds.contains(array[i].port2Cabinet.id)){
+						cabinetIds.addItem(array[i].port2Cabinet.id);
+					}
+				}
+				if(array.length == 0){
+//					Alert.show("请选择您要删除的配线单！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00136"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				
+//				Alert.show("您确定要删除吗?",
+//					"提示",
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+					Alert.YES|Alert.NO,
+					null,
+					judgeDel);
+			}
+			
+			private function judgeDel(event:CloseEvent):void{
+				if(event.detail == Alert.YES){
+					wssRemote.deleteWireSheetById(idArr);
+					wsw.grid1.checkBoxColunm.cloumsSelected = false;
+				}
+			}
+			
+			protected function deleteWireSheetByIdResult(event:ResultEvent):void{
+				var i:int  = event.result as int;
+				if(i > 0){
+//					Alert.show("删除成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00054"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					if(checkBox.selected){
+						AppEvent.dispatch(EventType.CABINET_REFRESH,cabinetIds);
+					}	
+					wsw.grid1.judgeRemote(1);
+					if(wsw.checkTabChange){
+						//为了刷新grid2的数据源 
+						wsw.grid2.judgeRemote(2);
+						wsw.grid2.exportInSystem();
+					}
+					AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+				}else{
+//					Alert.show("删除失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00020"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			/**
+			 * 生成工作单
+			 * */
+			private function makeWorkSheet():void{
+				var array:Array = wsw.grid1.dataGrid.getSelectedItem();
+				cabinetIds = new ArrayCollection();
+				if(array.length == 0){
+//					Alert.show("请选择您要生成的工作单！");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00137"));
+					return ;
+				}
+				idArr = new Array;
+				for(var i:int = 0;i<array.length;i++){
+					idArr.push(array[i].id);
+					if(!cabinetIds.contains(array[i].port1Cabinet.id)){
+						cabinetIds.addItem(array[i].port1Cabinet.id);
+					}
+					if(!cabinetIds.contains(array[i].port2Cabinet.id)){
+						cabinetIds.addItem(array[i].port2Cabinet.id);
+					}
+				}
+				PopUpManager.addPopUp(wsw.grid1.workSheetWindow,this,true);	
+				wsw.grid1.workSheetWindow.init();
+				wsw.grid1.workSheetWindow.workSheetId = idArr;
+				wsw.grid1.workSheetWindow.x = 300;
+				wsw.grid1.workSheetWindow.y = 400;
+			}
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:HGroup width="100%">
+		<gokei:FilterComBox id="comboBox" height="22" width="100" dataProvider="{wsw.grid1.linkArray}" labelField="name"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00035')}" click="{if(!comboBox.selectedItem)return;wsw.grid1.link(comboBox.selectedItem.code)}"/>
+		<s:Button id="generalWorkSheet" label="{ResourceManager.getInstance().getString('ViewerStrings','T00308')}" visible="false" includeInLayout="false" click="makeWorkSheet()"/>
+		<s:Button id="delWireSheet" label="{ResourceManager.getInstance().getString('ViewerStrings','T00052')}" visible="false" includeInLayout="false" click="delWiringSheet()"/>
+		<s:CheckBox id="checkBox" label="{ResourceManager.getInstance().getString('ViewerStrings','T00100')}"/>
+	</s:HGroup>
+	
+</s:Group>

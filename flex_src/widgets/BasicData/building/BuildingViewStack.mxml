@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mx:ViewStack xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			  xmlns:s="library://ns.adobe.com/flex/spark" 
+			  xmlns:mx="library://ns.adobe.com/flex/mx" 
+			  xmlns:building="widgets.BasicData.building.*"
+			  xmlns:area="widgets.BasicData.area.*" width="700" height="275" >	
+	
+	<fx:Declarations>
+		<s:Move id="showEffect" yFrom="{this.height}" yTo="0" />
+		<s:Move id="hideEffect" yFrom="0" yTo="{this.height}" duration="10" />
+	</fx:Declarations>
+	
+	<s:NavigatorContent id="nav1" hideEffect="{hideEffect}" showEffect="{showEffect}">
+		<building:AllBuilding id="allBuild"  width="100%" height="100%" buildingViewStack="{this}" />
+	</s:NavigatorContent>
+	<s:NavigatorContent id="nav2" hideEffect="{hideEffect}" showEffect="{showEffect}">
+		<building:AddBuilding id="addBuild" x="30" width="100%" height="100%" buildingViewStack="{this}"/>
+	</s:NavigatorContent>
+	<s:NavigatorContent id="nav3" hideEffect="{hideEffect}" showEffect="{showEffect}">
+		<area:AddArea id="addArea" x="30" width="100%" height="100%" buildingViewStack="{this}" />
+	</s:NavigatorContent>
+	<s:NavigatorContent id="nav4" hideEffect="{hideEffect}" showEffect="{showEffect}">
+		<area:AllArea id="allArea" width="100%" height="100%" buildingViewStack="{this}"/>
+	</s:NavigatorContent>
+</mx:ViewStack>

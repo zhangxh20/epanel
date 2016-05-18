@@ -1,0 +1,440 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*" creationComplete="init()">
+	
+	<fx:Declarations>
+		<s:Sequence id="seq1" target="{group}" effectEnd="seqStop(event)">
+			<s:Resize heightTo="{hGroup.height}"/>
+			<s:Fade duration="100" alphaTo="1"/>
+		</s:Sequence>
+		
+		<s:Sequence id="seq2" target="{group}">
+			<s:Fade duration="100" alphaTo="0"/>
+			<s:Resize heightTo="0"/>
+		</s:Sequence>
+		
+		<s:RemoteObject id="fsRemote" destination="fileService" fault="onFault(event)">
+			<s:method name="getAttachedInRoot" result="getListResult(event)"/>
+			<s:method name="getAttachedDocById" result="getAttachedDocByIdResult(event)"/>
+			<s:method name="addAttachedDoc" result="addResult(event)"/>
+			<s:method name="deleteFiles" result="delResult(event)"/>
+			<s:method name="imageUpload" result="upLoadResult(event)"/>
+			<s:method name="queryAttached" result="getListResult(event)"/>
+			<s:method name="uploadFiles" result="upLoadFilesResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[	
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.EffectEvent;
+			import mx.resources.ResourceManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			[Bindable]
+			private var allDoc : ArrayCollection;
+			[Bindable]
+			private var fileTypeArr : ArrayCollection = new ArrayCollection([
+//				{name : "全部" , type : "3"},{name : "图片",type : "1"}, {name : "文档", type : "0"}
+				{name : ResourceManager.getInstance().getString("ViewerStrings","T00063") , type : "3"},{name : ResourceManager.getInstance().getString("ViewerStrings","T00181"),type : "1"}, {name : ResourceManager.getInstance().getString("ViewerStrings","T00182"), type : "0"}
+			]);
+			//当前目录文件夹的ID
+			[Bindable]
+			private var _id : int = -1;
+			private var fileUploadList : FileReferenceList = new FileReferenceList(); //上传一个 或多个文件
+			private var fileDownload : FileReference = new FileReference(); //下载文件
+			private var fileType : FileFilter;
+			private  var imagesFilter : FileFilter;
+			private var rootPath : String ; //系统文件根目录
+			
+			private var contentArr : Array; //上传数据
+			private var nameArr : Array ; //文件名字
+			private var type : int ; //文件的类型
+			private var errorNum:int;
+			
+			private function init():void{
+				fsRemote.getAttachedInRoot(_id);
+				rootPath = CommonUtil.getRootPath();
+				fileType = new FileFilter("Office","*.xlsx;*.xls;*.csv;*.pdf;*.dwg;*.docx;*.vsd;*.zip;*.txt");
+				imagesFilter = new FileFilter("Images", "*.jpg;*.gif;*.png");
+				fileUploadList.addEventListener(Event.SELECT,onSelect);
+				fileDownload.addEventListener(Event.COMPLETE,downloadFileComp);
+				AppEvent.addListener(EventType.DOUBLE_CLICK,getDocArray);
+			}
+			private function onSelect(e:Event):void{
+				var file:FileReference;
+				nameArr = new Array();
+				for (var i : int = 0 ; i < fileUploadList.fileList.length ; i ++){
+					file = fileUploadList.fileList[i] as FileReference;
+					file.addEventListener(IOErrorEvent.IO_ERROR,errorFunc);
+					file.addEventListener(Event.COMPLETE,uploadComplete);
+					fileName.text += file.name + " ";
+					nameArr.push(file.name);
+					file.load();
+					if(file.type == ".jpg" || file.type == ".gif" || file.type == ".png"){
+						type = 1;
+					}else{
+						type = 0;
+					}
+				}
+			}
+			
+			private function uploadComplete(event: Event):void{
+				if (errorNum > 0){
+					uploadBtn.enabled = false;
+				} else{
+					uploadBtn.enabled = true;
+				}
+			}
+			
+			private function errorFunc(event : IOErrorEvent):void{
+//				Alert.show("找不到文件,请检查文件名是否正确，然后重试。","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00057"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				uploadBtn.enabled = false;
+				errorNum ++ ;
+				fileName.text = "";
+			}
+			
+			private function downloadFileComp(event : Event):void{
+//				Alert.show("成功下载","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00011"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				downloatBtn.enabled = false;
+				delFilesBtn.enabled = false;
+			}
+			
+			//双击文件夹 展开此文件夹
+			public function getDocArray(event : AppEvent):void{
+				//获取根目录下面所有的文件，文件夹
+				var obj : Object = event.data;
+				_id = obj._id;
+				fsRemote.getAttachedInRoot(_id);
+			}
+			
+			public function deleteFileOrDir(event : AppEvent):void{
+				var obj : Object = event.data;
+				fsRemote.deleteDir(obj._id);
+				uploadBtn.enabled = false;
+			}
+			
+			//下载文件
+			private function downloadFile():void{
+				var obj : Object = fileList.selectedItem as Object;				
+				var nameSave : String = obj.nameSave; //保存的文件路劲+名字
+				var nameShow : String = obj.nameShow;
+				var downLoadURL : URLRequest = new URLRequest();
+				downLoadURL.url = rootPath + "/" + nameSave;
+				fileDownload.download(downLoadURL,nameShow);
+			}
+			
+			//一个目录下所有文件 文件夹
+			private function getListResult(event:ResultEvent):void{
+				allDoc = event.result as ArrayCollection;
+				downloatBtn.enabled = false;
+				delFilesBtn.enabled = false;
+			}
+			
+			/**
+			 * 搜索文件
+			 * */
+			private function initState(value : String):void{
+				if(value == 'selFile'){
+					this.currentState = 'query';
+				}else if(value == 'uploadFile'){
+					this.currentState = 'upload';
+				}else{
+					this.currentState = 'folder';
+				}
+				seq1.play();
+			}
+			//取消
+			private function cancel():void{
+				seq2.play();
+				if(dirName){
+					dirName.text = "";
+				}
+				if(fileName){
+					fileName.text = "";
+				}
+				if(this.currentState == 'query'){
+					fsRemote.getAttachedInRoot(-1);
+					searchFileName.text = "";
+					searchFileType.selectedIndex = 0;
+				} 
+				if (uploadBtn){
+					uploadBtn.enabled = false;
+				}
+				downloatBtn.enabled = false;
+				delFilesBtn.enabled = false;
+			}
+			//动画效果播放完毕
+			private function seqStop(event:EffectEvent):void{
+				group.percentWidth = 100;
+			}
+			
+			//返回
+			private function back():void{
+				fsRemote.getAttachedDocById(_id);
+				downloatBtn.enabled = false;
+				delFilesBtn.enabled = false;
+			}
+		
+			private function getAttachedDocByIdResult(event:ResultEvent):void{
+				var att : Object = event.result as Object;
+				if(att){
+					// 通过ID 查找出对象 获取父对象ID
+					fsRemote.getAttachedInRoot(att.parentId);
+					_id = att.parentId;
+				}
+			}
+			
+			//创建文件夹
+			private function makeDir():void{
+				var doc : AttachedDoc = new AttachedDoc();
+				if (dirName.text == ""){
+//					Alert.show('请输入文件夹名称！','提示');
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00081"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				doc.nameShow = dirName.text;
+				doc.parentId = _id;
+				doc.type = 2;
+				
+				fsRemote.addAttachedDoc(doc);
+			}
+			
+			//查询文件
+			private function queryFile():void{
+				var doc :AttachedDoc = new AttachedDoc();
+				if(searchFileName.text != ""){
+					doc.nameShow = "%" + searchFileName.text + "%";
+				}
+				if(searchFileType.selectedItem != null){
+					if(searchFileType.selectedItem.type == "0"){
+						doc.type = 0;
+					}else if(searchFileType.selectedItem.type == "1"){
+						doc.type = 1;
+					}else{
+						doc.type = 3;
+					}
+				}
+				fsRemote.queryAttached(doc);
+			}
+			
+			
+			//上传文件
+			private function uploadMethod():void{
+				var file : FileReference;
+				contentArr = new Array();
+				for (var i : int = 0 ; i < fileUploadList.fileList.length ; i++){
+					file = fileUploadList.fileList[i] as FileReference;
+					contentArr.push(file.data);
+				}
+				fsRemote.uploadFiles(contentArr,nameArr,type,_id);
+				seq1.play();
+			}
+			
+			private function addResult(event:ResultEvent):void{
+				if(event.result == 0){
+//					Alert.show("创建文件夹失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00082"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				} else if (event.result == -1){
+//					Alert.show("文件夹名称重复！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00083"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				} else {
+					fsRemote.getAttachedInRoot(_id);
+					cancel();
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			private function delResult(event:ResultEvent):void{
+				var i : int = event.result as int;
+				if(i == -1){
+//					Alert.show("系统图库文件夹，不可删除！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00084"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == 0){
+//					Alert.show("删除失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00058"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("删除成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00085"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					fsRemote.getAttachedInRoot(_id);
+					delFilesBtn.enabled = false;
+					downloatBtn.enabled = false;
+				}
+			}
+			
+			private function upLoadResult(event:ResultEvent):void{
+				var filename:String = event.result as String;
+				if(filename != ""){
+//					Alert.show("上传成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00046"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					fsRemote.getAttachedInRoot(_id);
+					uploadBtn.enabled = false;
+					fileName.text = "";
+				}else{
+//					Alert.show("上传失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00090"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function upLoadFilesResult(event:ResultEvent):void{
+//				Alert.show("上传成功!","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00046"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				fsRemote.getAttachedInRoot(_id);
+				uploadBtn.enabled = false;
+				fileName.text = "";
+				downloatBtn.enabled = false;
+				delFilesBtn.enabled = false;
+			}
+			
+			private function listClick(event:MouseEvent):void{
+				if(fileList.selectedItem == undefined)return;
+				var obj : Object = fileList.selectedItem as Object;	
+				if(obj.type == 0 || obj.type == 1){
+					downloatBtn.enabled = true;
+				}else{
+					downloatBtn.enabled = false;
+				}
+				delFilesBtn.enabled = true;
+			}
+			
+			
+			private function deleteFile():void{
+//				Alert.show("您确定要删除吗？","提示",Alert.YES|Alert.NO,null,function(event:CloseEvent):void{
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00086"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.YES|Alert.NO,null,function(event:CloseEvent):void{
+					if(event.detail == Alert.YES){
+						var selectIdArr : Array = new Array();
+						var obj : Object = fileList.selectedItems as Object;
+						for each (var item : Object in obj){
+							selectIdArr.push(item.id);
+						}
+						fsRemote.deleteFiles(selectIdArr);
+					}
+				});
+			}
+		]]>
+	</fx:Script>
+	
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace viewer "com.esri.viewer.*";
+		.headText{
+			color:#ffffff;
+			fontWeight:bold;
+			fontFamily:"{ResourceManager.getInstance().getString('ViewerStrings','Font002')}";
+			textAlign:"center"
+		}
+	</fx:Style>
+	<viewer:states>
+		<s:State name="query"/>
+		<s:State name="upload"/>
+		<s:State name="folder"/>
+	</viewer:states>
+	
+	<viewer:WidgetTemplate id="wt" width="800" height="400">
+	
+		<s:BorderContainer id="bc" width="100%" height="100%" backgroundAlpha="0" borderStyle="solid" borderColor="0x000000">
+			<s:VGroup width="100%" height="100%">
+				<s:HGroup id="hGroup" width="100%" height="30" verticalAlign="middle" horizontalAlign="right" paddingRight="20">
+					<s:Image toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00183')}" click="initState('folder')" source="{DocMngImageList.makeDirIcon}" chromeColor="0xfffff0" buttonMode="true" />
+					<s:Image toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00184')}" click="initState('selFile')" source="{DocMngImageList.searchFileIcon}" chromeColor="0xfffff0" buttonMode="true" />
+					<s:Image toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00185')}" click="initState('uploadFile')" source="{DocMngImageList.uploadFilesIcon}" chromeColor="0xfffff0" buttonMode="true" />
+				</s:HGroup>
+				<s:Line xFrom="3" xTo="{bc.width}">
+					<s:stroke>
+						<s:SolidColorStroke color="0x000000"/>
+					</s:stroke>
+				</s:Line>
+				
+				<s:VGroup id="group" width="100%" height="0" alpha="0" horizontalAlign="right" verticalAlign="middle" paddingRight="10">
+					
+					<s:HGroup id="folderGroup" width="100%" height="10%" horizontalAlign="right" 
+							  verticalAlign="middle" paddingRight="10" includeIn="folder">
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00186')}"/>
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00029')}"/>
+						<s:TextInput id="dirName"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="makeDir()"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+					</s:HGroup>
+					
+					<s:HGroup id="selGroup" width="100%" height="10%" horizontalAlign="right" 
+							  verticalAlign="middle" paddingRight="10" includeIn="query">
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00187')}"/>
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00188')}"/>
+						<s:DropDownList id="searchFileType" labelField="name" dataProvider="{fileTypeArr}" selectedIndex="0"/>
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00134')}"/>
+						<s:TextInput id="searchFileName"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="queryFile()"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+					</s:HGroup>	
+					
+					<s:HGroup id="queryGroup" width="100%" height="10%" horizontalAlign="right" 
+							  verticalAlign="middle" paddingRight="10" includeIn="upload">
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00189')}"/>
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00029')}" />
+						<s:TextInput id="fileName" width="200" enabled="false"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00030')}" click="fileUploadList.browse([imagesFilter,fileType]);errorNum = 0"/>
+						<s:Button id="uploadBtn" label="{ResourceManager.getInstance().getString('ViewerStrings','T00116')}" enabled="false" click="uploadMethod()"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+					</s:HGroup>
+					
+					<s:Line id="line" xFrom="3" xTo="{bc.width}">
+						<s:stroke>
+							<s:SolidColorStroke color="0x000000"/>
+						</s:stroke>
+					</s:Line>
+				</s:VGroup>
+				
+				<s:HGroup width="100%" height="15" verticalAlign="middle" horizontalAlign="left" paddingLeft="50">
+					<s:HGroup width="50%" height="100%"  verticalAlign="middle">
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00029')}"  height="15" styleName="headText" width="70%"/>
+					</s:HGroup>
+					<s:HGroup width="50%" height="100%" horizontalAlign="right" verticalAlign="middle" paddingRight="20">
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="back()" visible="{_id == -1 ? false : true}"/>
+					</s:HGroup>
+				</s:HGroup>
+				
+				<s:HGroup width="100%" height="80%" horizontalAlign="center" verticalAlign="middle">
+					<s:List id="fileList" width="100%" height="100%" itemRenderer="widgets.DocMng.FolderItemRender" 
+							allowMultipleSelection="true" dataProvider="{allDoc}" click="listClick(event)"/>
+				</s:HGroup>
+				
+				<s:HGroup width="100%" height="30" horizontalAlign="right" verticalAlign="middle" paddingRight="20">
+					<s:Image id="downloatBtn" toolTip="下载" enabled="false" click="downloadFile()" source="{DocMngImageList.downLoadFileIcon}" chromeColor="0xfffff0" buttonMode="true" />
+					<s:Image id="delFilesBtn" toolTip="删除" enabled="false" click="deleteFile()" source="{DocMngImageList.delFileIcon}" chromeColor="0xfffff0" buttonMode="true" />
+				</s:HGroup>
+			</s:VGroup>
+		</s:BorderContainer>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

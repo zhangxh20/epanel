@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"
+				   xmlns:pageContent="widgets.WiringSheet.pageContent.*"
+				   widgetConfigLoaded="checkAuth()">
+	
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace viewer "com.esri.viewer.*";
+		@namespace gokei "widgets.WiringSheet.*";
+		.headText{
+			color:#ffffff;
+			fontWeight:bold;
+			fontFamily:"{ResourceManager.getInstance().getString('ViewerStrings','Font002')}"
+		}
+	</fx:Style>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.ViewerContainer;
+			import com.gokei.entitys.UserInfo;
+			
+			import mx.collections.ArrayCollection;
+			import mx.events.IndexChangedEvent;
+			import mx.resources.ResourceManager;
+					
+			public var flag:String = "";//控制表格的数据源
+			
+			[Bindable]
+			public var exportAuth:Boolean ; //历史界面：控制导出按钮显示
+			public var exportBut:String = ""; //控制导出按钮所对应的方法
+			public var checkTabChange:Boolean; //判断tabNavigator是否发生改变
+			
+			private var pageIndex : int = 0 ;
+			
+			//获取当前登录者
+			public var userInfo:UserInfo = ViewerContainer.getInstance().switchManager.userInfo;
+			//获取当前登陆者的权限集合
+			public var authList:ArrayCollection = userInfo.roleInfo.authIdList as ArrayCollection;
+			public var xml:XML;
+			private function checkAuth():void{
+				var i:int = 0;
+				for each(xml in configXML.buttons.button){
+					//判断是否有生成工作单权限
+					if(xml.@name == "generalWiresheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								grid1.butGroup1.generalWorkSheet.visible = true;
+								grid1.butGroup1.generalWorkSheet.includeInLayout = true;
+								break ;
+							}
+						}
+					}
+					
+					//判断是否有删除配线单的权限
+					if(xml.@name == "delWireSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								grid1.butGroup1.delWireSheet.visible = true;
+								grid1.butGroup1.delWireSheet.includeInLayout = true;
+								break ;
+							}
+						}
+					}
+					
+					//历史界面: 判断是否有导出自己 配线单的权限
+					if(xml.@name == "exportOwnHistoryWireSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth = true;
+								exportBut = "false";
+								break ;
+							}
+						}
+					}
+					
+					//历史界面: 判断是否有导出全部配线单的权限
+					if(xml.@name == "exportHistoryWireSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth = true;
+								exportBut = "true";
+								break ;
+							}
+						}
+					}
+					
+					//如果当前操作者 有查看自己配线单的权限
+					if(xml.@name == "queryOwnWireSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								flag = "false";
+								break ;
+							}
+						}
+					}
+					
+					//如果当前操作者 有查看所有配线单的权限
+					if(xml.@name == "queryWireSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								flag = "true";
+								break ;
+							}
+						}
+					}
+				}
+				grid1.init();
+				wt.resizable = false;
+			}
+			
+			private function tabChange(event:IndexChangedEvent):void
+			{
+				checkTabChange = true;
+				pageIndex = event.newIndex;
+			}
+			
+			private function wt_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt.resizable = false;},200);
+				switch(pageIndex)
+				{
+					case 0:
+						if (!grid1.queryPage.clickBtn) {
+							//如果点击了确定 上一页 下一页按钮 则numinput不清空
+							grid1.queryPage.numInput.text = "";
+						}
+						break;
+					case 1:
+						if (!grid2.queryPage.clickBtn) {
+							grid2.queryPage.numInput.text = "";
+						}
+						break;
+					default:
+						break;
+				}
+			}
+			
+			protected function wt_closedHandler(event:Event):void
+			{
+				grid1.init();
+				if(grid2){
+					grid2.init();
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<viewer:WidgetTemplate id="wt" width="1190" height="490"  fontFamily="{ResourceManager.getInstance().getString('ViewerStrings','Font002')}" open="wt_openHandler(event)" closed="wt_closedHandler(event)">
+		<mx:TabNavigator width="1150" height="430" backgroundColor="#353535" change="tabChange(event)">
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00311')}" >	
+				<s:Group left="10" right="10" top="5" bottom="10">
+					<s:layout>
+						<s:VerticalLayout/>
+					</s:layout>
+					<pageContent:WiringSheetDataGrid id="grid1" tableIndex="0" width="100%" wsw="{this}" currentState="init"/>
+				</s:Group>
+			</s:NavigatorContent>
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00312')}" >
+				<s:Group left="10" right="10" top="5" bottom="10">
+					<s:layout>
+						<s:VerticalLayout/>
+					</s:layout>
+					<pageContent:WiringSheetDataGrid id="grid2" tableIndex="1" width="100%" wsw="{this}" currentState="history"/>
+				</s:Group>
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+	</viewer:WidgetTemplate>		
+</viewer:BaseWidget>

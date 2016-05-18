@@ -1,0 +1,215 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"
+				   xmlns:gokei="widgets.Tree.*"
+				   layout="absolute" widgetConfigLoaded="configLoaded()">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.controls.Alert;
+			import mx.events.IndexChangedEvent;
+			import mx.events.MoveEvent;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			private var companyId:int;
+			[Bindable]
+			private var timeOut:int;
+			
+			private var expand : Boolean = false;
+			
+			private var netExpand : Boolean = false;
+			
+			private var roomExpand : Boolean = false;
+			
+			private var alarmTimer:Timer = new Timer(1000);
+			
+			private var obj : Object ;
+			
+			private function configLoaded():void {
+				//wTemplate.resizable = false;
+				companyId = configXML.company;
+				HashTableManager.instance.put("comId",companyId);
+				timeOut = configXML.timeOut;
+				net.init(companyId);
+				AppEvent.addListener(EventType.EQMTALARM_MAINTREE,eqmtAlarm);
+				alarmTimer.addEventListener(TimerEvent.TIMER,timerAlarm);
+			}
+			private function eqmtAlarm(event : AppEvent) : void{
+				obj = event.data ;
+				tab.selectedIndex = 1;
+				alarmTimer.start();
+			}
+			private function timerAlarm(event:TimerEvent):void {
+				if(maintain.loadFlag == true){
+					//维护树形图 数据已经加载完毕
+					maintain.eqmtAlarm(obj);
+					alarmTimer.stop();
+				}
+			}
+			//切换tab
+			public function tabChange(event:IndexChangedEvent):void{
+				var i : int = tab.selectedIndex ;
+				switch(i){
+					case 0:
+						this.currentState = 'init';
+						break;
+					case 1:
+						this.currentState = 'main';
+						if(maintain.tb.selected || maintain.link.selected || maintain.addShelfBtn.selected){
+							mainGroup.percentWidth = 50;
+							genGroup.percentWidth = 50;
+							genGroup.includeInLayout = true;
+							genGroup.visible = true;
+						}
+						if(maintain.link.selected ){
+							//生成表 不需要展开收缩 则把按钮隐藏
+							genGroup.visible = false;
+						}else{
+							genGroup.visible = true;
+						}
+						mainGroup.addElement(maintain.mainGroup);
+						break;
+					case 2:
+						this.currentState = 'room';
+						if(roomTree.btnSelected){
+							roomGroup1.percentWidth = 50;
+							roomGroup2.percentWidth = 50;
+							roomGroup2.includeInLayout = true;
+						}else{
+							roomGroup1.percentWidth = 100;
+						}
+						break;
+					default:
+						break;
+				}
+			}
+			
+			private function expandTree(value:String):void{
+				switch(value)
+				{
+					case "init":
+						if(netExpand){
+							netExpand = false;
+//							initBtn.toolTip = '展开';
+							initBtn.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00129");
+							initBtn.source = "assets/images/closeX.png";
+							//收缩
+							net.tree.expandChildrenOf(net.xml,false);
+							net.tree.selectedIndex = 0;
+							net.tree.expandItem(net.tree.selectedItem,true);
+						}else{
+							netExpand = true;
+//							initBtn.toolTip = '收缩';
+							initBtn.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00130");
+							initBtn.source = "assets/images/expand.png";
+							net.tree.expandChildrenOf(net.xml,true);
+						}
+						break;
+					case "main" :
+						if(expand){
+							expand = false;
+//							genBtn.toolTip = '展开';
+							genBtn.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00129");
+							genBtn.source = "assets/images/closeX.png";
+							maintain.initTree.expandTree(1);
+						}else{
+							expand = true;
+//							genBtn.toolTip = '收缩';
+							genBtn.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00130");
+							genBtn.source = "assets/images/expand.png";
+							maintain.initTree.expandTree(0);
+						}
+						break;
+					case "room" :
+						//空间树形图的展开
+						if(roomExpand){
+							roomExpand = false;
+//							roomImage.toolTip = '展开';
+							roomImage.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00129");
+							roomImage.source = "assets/images/closeX.png";
+							roomTree.tree.expandChildrenOf(roomTree.xml,false);
+							roomTree.tree.selectedIndex = 0;
+							roomTree.tree.expandItem(roomTree.tree.selectedItem,true);
+						}else{
+							roomExpand = true;
+//							roomImage.toolTip = '收缩';
+							roomImage.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00130");
+							roomImage.source = "assets/images/expand.png";
+							roomTree.tree.expandChildrenOf(roomTree.xml,true);
+						}
+						break;
+					default:
+					{
+						break;
+					}
+				}
+			}
+			
+			protected function wTemplate_closedHandler(event:Event):void
+			{
+				// TODO Auto-generated method stub
+				var data : Object = { arr : [EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],EventType.REFRESH_ID[8]
+					,EventType.REFRESH_ID[9]
+				]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<viewer:states>
+		<s:State name="init"/>
+		<s:State name="main"/>
+		<s:State name="room"/>
+	</viewer:states>
+	<viewer:WidgetTemplate id="wTemplate" width="450" height="600" closed="wTemplate_closedHandler(event)">
+		<s:HGroup width="100%" height="20" y="1" verticalAlign="middle" horizontalAlign="right" includeIn="init">
+			<s:Image id="initBtn" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00129')}" click="expandTree('init')" source="assets/images/closeX.png" buttonMode="true"/>
+		</s:HGroup>
+		
+		<s:HGroup width="100%" height="20" y="1" verticalAlign="middle" horizontalAlign="right" includeIn="main">
+			<s:HGroup id="mainGroup" width="100%" verticalAlign="middle" horizontalAlign="right"/>
+			<s:HGroup id="genGroup" verticalAlign="middle" horizontalAlign="right" includeInLayout="false">
+				<s:Image id="genBtn" bottom="0" toolTip="T00129{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" click="expandTree('main')" source="assets/images/closeX.png" buttonMode="true"/>
+			</s:HGroup>
+		</s:HGroup>
+		
+		<s:HGroup width="100%" height="20" y="1" verticalAlign="middle" horizontalAlign="center" includeIn="room">
+			<s:HGroup id="roomGroup1" width="100%" verticalAlign="middle" horizontalAlign="right">
+				<s:Image id="roomImage" bottom="0" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00129')}" click="expandTree('room')" source="assets/images/closeX.png" buttonMode="true"/>
+			</s:HGroup>
+			<s:HGroup id="roomGroup2" includeInLayout="false"/>
+		</s:HGroup>
+		
+		<mx:TabNavigator id="tab" width="100%" height="100%" backgroundAlpha="0.0" change="tabChange(event)">
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00267')}">
+				<gokei:NetTree id="net" companyId="{companyId}" />
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00268')}">
+				<s:Group width="100%" height="100%" >
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:Group width="100%" height="100%">
+						<gokei:MaintainTree id="maintain" width="100%" height="100%" companyId="{companyId}" timeOut="{timeOut}" treeWidget="{this}"/>
+					</s:Group>
+				</s:Group>
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00128')}">
+				<gokei:RoomTree id="roomTree" width="100%" height="100%" companyId="{companyId}" treeWidget="{this}"/>
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+		
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

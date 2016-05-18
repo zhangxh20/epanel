@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Panel xmlns:fx="http://ns.adobe.com/mxml/2009" backgroundAlpha="0" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" skinClass="widgets.CabinetManager.mySkin.objectFormSkin" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" width="1150" height="250" xmlns:cabinetForm="widgets.CabinetManager.cabinetForm.*" 
+		 creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="assetsService" fault="onFault(event)">
+			<s:method name="addAssets" result="addSuccess(event)" fault="addfaultEvent(event)"/>
+			<s:method name="modifyAssets" result="modifyResult(event)" fault="editfaultEvent(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			import widgets.CabinetManager.productsImage.ImageList;
+			import widgets.CabinetManager.productsImage.ImageUpload;
+			
+			public var objform:ObjectForm;
+			
+			private var imgUpload:ImageUpload;
+			
+			private var imageList:ImageList;
+			
+			public var midType:String;
+			
+			[Bindable]
+			public var img:String;
+			
+			private function init():void {
+				imageList = new ImageList();
+				imageList.addProduct = this;
+				imgUpload = new ImageUpload();
+				imgUpload.addProducts = this;
+			}
+			
+			/**
+			 * 弹出图片选择框
+			 */ 
+			private function showWindow():void {
+				PopUpManager.addPopUp(imageList,this);
+				imageList.x = mouseX + imageList.width/2;
+				imageList.y = (mouseY + imageList.height)/2 ;
+			}
+			
+			/**
+			 * 弹出图片上传框
+			 */ 
+			private function upload():void {
+				PopUpManager.addPopUp(imgUpload,this);
+				imgUpload.x = mouseX + imgUpload.width/2;
+				imgUpload.y = (mouseY + imgUpload.height)/2;
+			}
+			
+			/**
+			 * 点取消按钮
+			 */ 
+			private function cancel():void{
+				objform.refresh();
+			}
+			
+			protected function modifyResult(event:ResultEvent):void {
+				if (event.result == false) {
+//					Alert.show("修改失败");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00016"));
+					return;
+				}
+				productInputForm.productObj = null;
+				objform.refresh();
+				AppEvent.dispatch(EventType.PRODUCT_REFRESH);
+//				Alert.show("修改成功");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00053"));
+				//刷新相关的产品
+				var data : Object = { arr : [EventType.REFRESH_ID[1],EventType.REFRESH_ID[6],EventType.REFRESH_ID[7],EventType.REFRESH_ID[8]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			
+			private function addfaultEvent(event:FaultEvent):void{
+				productInputForm.resetForm();
+				
+//				Alert.show("添加失败");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00015"));
+			}
+			
+			private function editfaultEvent(event:FaultEvent):void{
+				
+//				Alert.show("修改失败");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00016"));
+			}
+			
+			private function addSuccess(event:ResultEvent):void{
+				productInputForm.productObj = null;
+				objform.refresh();
+				AppEvent.dispatch(EventType.PRODUCT_REFRESH);
+//				Alert.show("添加成功");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"));
+			}
+			
+			/**
+			 * 添加产品，点确认
+			 */ 
+			protected function submit(event:MouseEvent):void {
+				var index:int = productInputForm.viewstack.selectedIndex;
+				var validErrArray:Array = Validator.validateAll(productInputForm.validErrorArry);
+				var validForm:Boolean = validErrArray.length == 0;
+				if(!validForm){
+					return;
+				}
+				var ai:AssetsInfo ;
+				var a:AssetsSpecInfo;
+				var b:AssetsSpecInfo;
+				var c:AssetsSpecInfo;
+				var d:AssetsSpecInfo;
+				var e:AssetsSpecInfo;
+				var aiList:ArrayCollection = new ArrayCollection();
+				switch(index)
+				{
+					case 0://机柜
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name1.text;
+						ai.model = productInputForm.model1.text;
+						ai.brand = productInputForm.brand1.text;
+						ai.remark = productInputForm.remark1.text;
+						ai.image = img;
+						a = new AssetsSpecInfo();
+						a.name = "uCount";
+						a.specValue = productInputForm.uCount1.text;
+						aiList.addItem(a);
+						ai.assetsSpecInfoList = aiList;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}
+					case 1:// 智能管理架
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name2.text;
+						ai.model = productInputForm.model2.text;
+						ai.remark = productInputForm.remark2.text;
+						ai.brand = productInputForm.brand2.text;
+						ai.image = img;
+						a = new AssetsSpecInfo();
+						a.name = "uHoldCount";
+						a.specValue = productInputForm.uHoldCount2.text;
+						b = new AssetsSpecInfo();
+						b.name = "portCount";
+						b.specValue = productInputForm.portCount2.text;
+						aiList.addItem(a);
+						aiList.addItem(b);
+						ai.assetsSpecInfoList = aiList;
+						// 智能管理架，是系统设备
+						ai.isSysAssets = 1;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}
+					case 2: // 配线架
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name3.text;
+						ai.model = productInputForm.model3.text;
+						ai.remark = productInputForm.remark3.text;
+						ai.brand = productInputForm.brand3.text;
+						ai.image = img;
+						a = new AssetsSpecInfo();
+						a.name = "uHoldCount";
+						a.specValue = productInputForm.uHoldCount3.text;
+						b = new AssetsSpecInfo();
+						b.name = "portCount";
+						b.specValue = productInputForm.portCount3.text;
+						aiList.addItem(a);
+						aiList.addItem(b);
+						ai.assetsSpecInfoList = aiList;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}
+					case 3: // 系统设备
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name4.text;
+						ai.model = productInputForm.model4.text;
+						ai.brand = productInputForm.brand4.text;
+						ai.remark = productInputForm.remark4.text;
+						ai.image = img;
+						a = new AssetsSpecInfo();
+						a.name = "uHoldCount";
+						a.specValue = productInputForm.uHoldCount4.text;
+						aiList.addItem(a);
+						ai.assetsSpecInfoList = aiList;
+						// 默认是系统设备
+						ai.isSysAssets = 1;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}	
+					case 4: // 网络设备
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name5.text;
+						ai.model = productInputForm.model5.text;
+						ai.brand = productInputForm.brand5.text;
+						ai.remark = productInputForm.remark5.text;
+						ai.image = img;
+						a = new AssetsSpecInfo();
+						a.name = "uHoldCount";
+						a.specValue = productInputForm.uHoldCount5.text;
+						b = new AssetsSpecInfo();
+						b.name = "portCount";
+						b.specValue = productInputForm.portCount5.text;
+						c = new AssetsSpecInfo();
+						c.name = "fportCount";
+						c.specValue = productInputForm.fportCount5.text;
+						aiList.addItem(a);
+						aiList.addItem(b);
+						aiList.addItem(c);
+						ai.assetsSpecInfoList = aiList;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}
+					case 5: // 其他设备
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name6.text;
+						ai.model = productInputForm.model6.text;
+						ai.brand = productInputForm.brand6.text;
+						ai.remark = productInputForm.remark6.text;
+						ai.image = img;
+						a = new AssetsSpecInfo();
+						a.name = "uHoldCount";
+						a.specValue = productInputForm.uHoldCount6.text;
+						aiList.addItem(a);
+						ai.assetsSpecInfoList = aiList;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}
+					case 6 : // 终端
+					{
+						ai = new AssetsInfo();
+						ai.objectTypeId = midType;
+						ai.name = productInputForm.name7.text;
+						ai.model = productInputForm.model7.text;
+						ai.brand = productInputForm.brand7.text;
+						ai.remark = productInputForm.remark7.text;
+						ai.image = img;
+						ai.assetsSpecInfoList = aiList;
+						if(productInputForm.productObj){
+							ai.id = productInputForm.productObj.id;
+							remote.modifyAssets(ai);
+						}else{
+							remote.addAssets(ai);
+						}
+						break;
+					}
+					default:
+					{
+						break;
+					}
+				}
+			}
+			private function onFault(event:FaultEvent):void {
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Button x="80" y="236" label="{ResourceManager.getInstance().getString('ViewerStrings','T00142')}" click="upload()" />
+	<s:Button id="myButton"  x="170" y="236"  label="{ResourceManager.getInstance().getString('ViewerStrings','T00143')}"  click="showWindow();"/>
+	<s:SWFLoader horizontalAlign="center"  verticalAlign="middle" x="33" y="27" width="350" height="180" id="swfloader" source="{img}" scaleContent="true"/>
+	<s:Label x="360" y="240" width="80" text="{ResourceManager.getInstance().getString('ViewerStrings','T00144')}"/>
+	<s:Scroller  id="scroller"  x="440" y="15" width="660" height="210"  minViewportInset="1" focusEnabled="false">
+		<cabinetForm:cabForm id="productInputForm" addPro="{this}"/>
+	</s:Scroller>
+	<s:Button x="860" y="240" id="submitBtn" label="{ResourceManager.getInstance().getString('ViewerStrings','T00145')}" click="submit(event)"/>
+	<s:Button x="960" y="240"  id="resetBtn" label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()" />
+</s:Panel>

@@ -1,0 +1,641 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" width="100%" height="100%" left="5" right="5">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="shelfRemote" destination="shelfService" fault="onFault(event)">
+			<s:method name= "addShelfToCabinetInSystemRunning" result="addResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="bgRemote" destination="backgroundService" fault="onFault(event)">
+			<s:method name="getEmptyuNos" result="getuNo(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="dataRemote" destination="assetsService" fault="onFault(event)" >
+			<s:method name="getEPXJAssets" result="getDataListResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.CabinetManager.productsComponent.Shelf;
+			
+			private var initObj:Object ; 
+			[Bindable]
+			private var equCode:String;//采集器序号
+			private var array:Array = new Array(); 
+			[Bindable]
+			private var array1:ArrayCollection;
+			[Bindable]
+			private var arrayCollection : ArrayCollection = new ArrayCollection();
+			[Bindable]
+			private var shelfType : ArrayCollection = new ArrayCollection([
+//				{name:"主干",type:"0"},{name:"水平",type:"1"},{name:"交换机",type:"2"}
+				{name:ResourceManager.getInstance().getString("ViewerStrings","T00149"),type:"0"},{name:ResourceManager.getInstance().getString("ViewerStrings","T00150"),type:"1"},{name:ResourceManager.getInstance().getString("ViewerStrings","T00151"),type:"2"}
+			]);
+			private var timer : Timer = new Timer(20000);
+			private var _maintainTree:MaintainTree;
+			private var obj:Object; //点击maintainTree时的obj对象
+			private var cabinetId:int ;
+//			private var data:Object ; //点击cabinetTree时的obj对象
+			private var object : Object = new Object();
+//			private var cabinetSelect:CabinetSelect = new CabinetSelect();
+			private var pushResult:Boolean; //是否有推送过来
+			private var freshObj : Object; //刷新维护树形图，默认展开需要的属性
+			
+			public function set maintainTree(value:MaintainTree):void{
+				this._maintainTree = value;
+				AppEvent.addListener(EventType.ADD_SHELF_SUCCORFAIL,addShelf);
+				dataRemote.getEPXJAssets();
+			}
+			
+			private function addShelf(event : AppEvent) : void{
+				var data : Object = event.data;
+				CommonUtil.stopLoading();
+				timer.stop();
+				if(data.type == 7){
+					//添加配线架成功
+//					Alert.show("配线架已连接到" +equCode+ "扫描仪第" + data.addSysRunShelfSeqNo + "口上","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","T00234") +equCode+ ResourceManager.getInstance().getString("ViewerStrings","T00235") + data.addSysRunShelfSeqNo + ResourceManager.getInstance().getString("ViewerStrings","T00236"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					//刷新维护图
+					_maintainTree.parentId = int(freshObj.gatewayId);//网关ID
+					_maintainTree.parentId1 = int(freshObj.controllerId); //控制器ID
+					_maintainTree.parentId2 = int(freshObj.collectorId); //扫描仪ID
+					_maintainTree.pushResult = true;
+					//刷新网络图 展开需要机柜ID 建筑ID
+					var obj : Object = { arr : [EventType.REFRESH_ID[6],EventType.REFRESH_ID[7]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+					//刷新机柜图
+					data = new Object();
+					data.cabinetId = cabinetId;
+					AppEvent.dispatch(EventType.EQMT_DELETE_SUCC,data);
+				}else if(data.type == 8){
+//					Alert.show("配线架未连接到" +equCode+ "扫描仪第" + data.addSysRunShelfSeqNo + "口上","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","T00237") +equCode+ ResourceManager.getInstance().getString("ViewerStrings","T00235") + data.addSysRunShelfSeqNo + ResourceManager.getInstance().getString("ViewerStrings","T00236"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function clear(value : int):void{
+				if(value == 1){
+					uNumCombox.selectedIndex = -1;
+//					selectType1.text = "请选择";
+					selectType1.text = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+					v1.enabled = false;
+					b1.enabled = true;
+					tb1.selected = false;
+					object.flag1 = false;
+					sType1.selectedIndex = -1;
+//					sType1.prompt = "请选择";
+					sType1.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				}else if(value == 2){
+					uNumCombox2.selectedIndex = -1;
+//					selectType2.text = "请选择";
+					selectType2.text = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+					v2.enabled = false;
+					b2.enabled = true;
+					tb2.selected = false;
+					object.flag2 = false;
+					sType2.selectedIndex = -1;
+//					sType1.prompt = "请选择";
+					sType1.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				}else{
+					uNumCombox3.selectedIndex = -1;
+//					selectType3.text = "请选择";
+					selectType3.text = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+					v3.enabled = false;
+					b3.enabled = true;
+					tb3.selected = false;
+					object.flag3 = false;
+					sType3.selectedIndex = -1;
+//					sType1.prompt = "请选择";
+					sType1.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				}
+				gridGroup.visible = false;
+			}
+			
+			private function toShelfType(value : int,obj : Object):void{
+				for(var i : int = 0 ; i < shelfType.length ; i ++){
+					if(value == 1){
+						//第一个配线架的类型 默认选中
+						if(obj["1"] == shelfType.getItemAt(i).type){
+							sType1.selectedIndex = i ;
+							break;
+						}
+					}else if(value == 2){
+						if(obj["2"] == shelfType.getItemAt(i).type){
+							sType2.selectedIndex = i ;
+							break;
+						}
+					}else{
+						if(obj["3"] == shelfType.getItemAt(i).type){
+							sType3.selectedIndex = i ;
+							break;
+						}
+					}
+				}
+			}
+			/**
+			 * 初始化
+			 * @param args0:obj[采集器序号] = uNo
+			 * @param args1:采集器下序号
+			 * @param args2:obj对象
+			 * @param shelfName:配线架名字
+			 * */
+			public function initParameter(args0:Object,args2:String,args3:Object,shelfInit:Object,freshObj:Object):void{
+				this.initObj = args0;
+				this.equCode = args2;
+				this.obj = args3;
+				this.freshObj = freshObj;
+				object.obj1 = initObj["1"];
+				object.obj2 = initObj["2"];
+				object.obj3 = initObj["3"];
+				cabinetId = obj.cabinetId;
+				clear(1);
+				clear(2);
+				clear(3);
+				var cabinetCode : String ;
+				if(object.obj1){
+					array1 = new ArrayCollection([{ name : object.obj1}]);
+					uNumCombox.dataProvider = array1;
+					uNumCombox.selectedIndex = 0;
+					tb1.selected = true;
+					b1.enabled = false;
+					//selParentBt.setStyle("fontSize",12);
+					//selParentBt.text = cabCode["1"];
+					selectType1.text = obj.name;
+					selectType1.text = shelfInit["1"];
+					toShelfType(1,obj);	
+				}
+				
+				if(object.obj2){
+					array1 = new ArrayCollection([{ name : object.obj2}]);
+					uNumCombox2.dataProvider = array1;
+					uNumCombox2.selectedIndex = 0;
+					tb2.selected = true;
+					b2.enabled = false;
+					//selParentBt2.setStyle("fontSize",12);
+					//selParentBt2.text = cabCode["2"];
+					selectType2.text = obj.name;
+					selectType2.text = shelfInit["2"];
+					toShelfType(2,obj);	
+				}
+				
+				if(object.obj3){
+					array1 = new ArrayCollection([{ name : object.obj3}]);
+					uNumCombox3.dataProvider = array1;
+					uNumCombox3.selectedIndex = 0;
+					tb3.selected = true;
+					b3.enabled = false;
+					//selParentBt3.setStyle("fontSize",12);
+					//selParentBt3.text = cabCode["3"];
+					selectType3.text = shelfInit["3"];
+					toShelfType(3,obj);	
+				}
+				//扫描仪下面的配线架 只能连接到同一个机柜下面
+				selParentBt.setStyle("fontSize", 12);
+				selParentBt2.setStyle("fontSize", 12);
+				selParentBt3.setStyle("fontSize", 12);
+				//相同的机柜编号
+				selParentBt.text = selParentBt2.text = selParentBt3.text = obj.cabinetCode;
+			}
+			
+			public function addShelfInColl():void{
+				var arrayShelf : Array = new Array();
+				if(array.length == 0 || array == null){
+//					label.text = '提示：请选择新增配线架与采集器端口号!';
+					label.text = ResourceManager.getInstance().getString("ViewerStrings","I00093");;
+					return ;
+				}
+				if(b1.enabled == true && tb1.selected == true){
+					object.num1 = 0;
+					if(uNumCombox.selectedItem == null){
+//						label.text = "提示：请选择1号端口的所在U层!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00094");
+						b1.setStyle("borderColor",'0xff0000');
+						return ; 
+					}else{
+						object.num1 = int(uNumCombox.selectedItem.uNo);
+					}
+//					if(selectType1.text == "请选择"){
+					if(selectType1.text == ResourceManager.getInstance().getString("ViewerStrings","I00034")){
+//						label.text = "提示：请选择1号端口的名称!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00095");
+						b1.setStyle("borderColor",'0xff0000');
+						return ; 
+					}
+					if(sType1.selectedItem == null){
+//						label.text = "提示：请选择1号端口的配线架类型!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00096");
+						b1.setStyle("borderColor",'0xff0000');
+						return ; 
+					}
+					
+					var shelf : Shelf = toShelf(uNumCombox.selectedItem.uNo,1,object.brand1,object.assetsId1,
+						object.typeId1,object.productNo1,obj.collectorId,object.name1,
+						sType1.selectedItem.type,object.portCount1,object.uHoldCount1);
+					shelf.cabinetId = cabinetId;
+					shelf.code = obj.cabinetCode + "-" + shelf.uNo;
+					arrayShelf.push(shelf);
+				} else{
+					object.num1 = 102;
+				}
+				if(b2.enabled == true && tb2.selected == true){
+					object.num2 = 0;
+					if(uNumCombox2.selectedItem == null){
+//						label.text = "提示：请选择2号端口的所在U层!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00096");
+						b2.setStyle("borderColor",'0xff0000');
+						return ; 
+					}else{
+						object.num2 = int(uNumCombox2.selectedItem.uNo);
+					}
+//					if(selectType2.text == "请选择"){
+					if(selectType2.text == ResourceManager.getInstance().getString("ViewerStrings","I00034")){
+//						label.text = "提示：请选择2号端口的名称!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00098");
+						b2.setStyle("borderColor",'0xff0000');
+						return ; 
+					}
+					if(sType2.selectedItem == null){
+//						label.text = "提示：请选择2号端口的配线架类型!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00099");
+						b2.setStyle("borderColor",'0xff0000');
+						return ; 
+					}
+					var shelf2 : Shelf = toShelf(uNumCombox2.selectedItem.uNo,2,object.brand2,object.assetsId2,
+						object.typeId2,object.productNo2,obj.collectorId,object.name2,
+						sType2.selectedItem.type,object.portCount2,object.uHoldCount2);
+					shelf2.cabinetId = cabinetId;
+					shelf2.code = obj.cabinetCode + "-" + shelf2.uNo;
+					arrayShelf.push(shelf2);
+				}else{
+					object.num2 = 101;
+				}
+				if(b3.enabled == true && tb3.selected == true){
+					object.num3 = 0;
+					if(uNumCombox3.selectedItem == null){
+//						label.text = "提示：请选择3号端口的所在U层!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00100");
+						b3.setStyle("borderColor",'0xff0000');
+						return ; 
+					}else{
+						object.num3 = int(uNumCombox3.selectedItem.uNo);
+					}
+//					if(selectType3.text == "请选择"){
+					if(selectType3.text == ResourceManager.getInstance().getString("ViewerStrings","I00034")){
+//						label.text = "提示：请选择3号端口的名称!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00101");
+						b3.setStyle("borderColor",'0xff0000');
+						return ; 
+					}
+					if(sType3.selectedItem == null){
+//						label.text = "提示：请选择3号端口的配线架类型!";
+						label.text = ResourceManager.getInstance().getString("ViewerStrings","I00102");
+						b3.setStyle("borderColor",'0xff0000');
+						return ; 
+					}
+					var shelf3 : Shelf = toShelf(uNumCombox3.selectedItem.uNo,3,object.brand3,object.assetsId3,
+						object.typeId3,object.productNo3,obj.collectorId,object.name3,
+						sType3.selectedItem.type,object.portCount3,object.uHoldCount3);
+					shelf3.cabinetId = cabinetId;
+					shelf3.code = obj.cabinetCode + "-" + shelf3.uNo;
+					arrayShelf.push(shelf3);
+				}else{
+					object.num3 = 100;
+				}
+				//相同机柜
+				if( (object.num1 - object.num2)*(object.num1 - object.num3)*(object.num2 - object.num3) == 0.0 ){
+//					Alert.show("相同机柜下选择的所在U层不可重复！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00103"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				
+				shelfRemote.addShelfToCabinetInSystemRunning(arrayShelf);
+				CommonUtil.startLoading(0,20);
+				_maintainTree.addShelfBtn.enabled = false;
+				_maintainTree.addShelfBtn.alpha = 0.2;
+				_maintainTree.removeAll(this);
+			}
+			
+			private function toShelf(uNo:int,antennaCode:int,brand:String,assetsId:int,typeId:String,
+									 productorNo:String,collectorId:int,name:String,type:int,portCount:int,uHoldCount:int):Shelf{
+				var shelf : Shelf = new Shelf();
+				shelf.uNo = uNo;
+				shelf.antennaCode = antennaCode;
+				shelf.brand = brand;
+				shelf.assetsId = assetsId;
+				shelf.typeId = typeId;
+				shelf.productNo = productorNo;
+				shelf.collectorId = collectorId;
+				shelf.name = name;
+				shelf.type = type;
+				shelf.portCount = portCount;
+				shelf.uHoldCount = uHoldCount;
+				return shelf;
+			}
+			
+			public function cancel():void{
+				b1.setStyle("borderColor",'0x696969');
+				b2.setStyle("borderColor",'0x696969');
+				b3.setStyle("borderColor",'0x696969');
+				label.text = "";
+			}
+			
+			private function close():void{
+				cancel();
+				clear(1);clear(2);clear(3);
+				_maintainTree.addShelfBtn.enabled = false;
+				_maintainTree.addShelfBtn.alpha = 0.2;
+				_maintainTree.removeAll(this);
+			}
+			
+			public function totalNum(value : int):void{
+				if(value == 1){
+					if(tb1.enabled == true && tb1.selected){
+						array.push("");
+						selParentBt.setStyle("fontSize",12);
+						selectType1.enabled = true;
+					}else{
+						selectType1.enabled = false;
+						array.shift();
+						clear(1);
+					}
+				}else if(value == 2){
+					if(tb2.enabled == true && tb2.selected){
+						array.push("");
+						selParentBt2.setStyle("fontSize",12);
+						selectType2.enabled = true;
+					}else{
+						selectType2.enabled = false;
+						array.shift();
+						clear(2);
+					}
+				}else{
+					if(tb3.enabled == true && tb3.selected){
+						array.push("");cancel();
+						selParentBt3.setStyle("fontSize",12);
+						selectType3.enabled = true;
+					}else{
+						selectType3.enabled = false;
+						array.shift();
+						clear(3);
+					}
+				}
+				cancel();
+			}
+			
+			private function getuNo(event:ResultEvent):void {
+				var array:ArrayCollection = event.result as ArrayCollection;
+				var labelArr:ArrayCollection = new ArrayCollection();
+				for (var i:int = 0; i < array.length; i++) {
+					labelArr.addItem({uNo:array.getItemAt(i),name:array.getItemAt(i) + "U",id:array.getItemAt(i)});
+				}
+				if(object.type1){
+					uNumCombox.dataProvider = labelArr;
+				}
+				if(object.type2){
+					uNumCombox2.dataProvider = labelArr;
+				}
+				if(object.type3){
+					uNumCombox3.dataProvider = labelArr;
+				}
+			}
+			private function addResult(event:ResultEvent):void{
+				timer.addEventListener(TimerEvent.TIMER,timerHandler);
+				timer.start();
+				var array:ArrayCollection = event.result as ArrayCollection;
+				if(array.length == 0){
+					return ;
+				}
+				var flag : Boolean = true;
+				for(var i : int = 0; i < array.length ; i++){
+					var number:int = array[i];
+//					Alert.show("扫描仪第" + number + "口添加配线架失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","T00235") + number + ResourceManager.getInstance().getString("ViewerStrings","E00061"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					flag = false;
+				}
+				if(!flag){
+					CommonUtil.stopLoading();
+				}
+				
+			}
+			private function timerHandler(event:TimerEvent):void{
+				timer.stop();
+				if(pushResult){
+					pushResult = false;
+				}else{
+//					Alert.show("新增配线架失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00062"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					CommonUtil.stopLoading();
+				}
+			}
+			
+			private function getDataListResult(event:ResultEvent):void{
+				arrayCollection = event.result as ArrayCollection;
+				dataGrid.dataProvider = toLabelArray(arrayCollection);
+			}
+			
+			private function toLabelArray(list:ArrayCollection):ArrayCollection {
+				var labelList:ArrayCollection = new ArrayCollection();
+				var obj:Object;
+				for (var i:int = 0; i < list.length; i ++) {
+					obj = new Object();
+					obj.no = i+1;
+					obj.name = list.getItemAt(i).name;
+					obj.model = list.getItemAt(i).model;
+					obj.id = list.getItemAt(i).id;
+					obj.objectTypeId = list.getItemAt(i).objectTypeId;
+					obj.brand = list.getItemAt(i).brand;
+					var ai : Object = list[i];
+					for (var j:int = 0; j < ai.assetsSpecInfoList.length; j++) {	
+						var aslist:Object = ai.assetsSpecInfoList[j];
+						var str:String = aslist.name;
+						obj[str] = aslist.specValue;
+					}
+					labelList.addItem(obj);
+				}
+				return labelList;
+			}
+			
+			private function selectType(value : int):void{
+				object.type1 = false;
+				object.type2 = false;
+				object.type3 = false;
+				if(value == 1){
+					object.type1 = true;
+				}else if(value == 2){
+					object.type2 = true;
+				}else{
+					object.type3 = true;
+				}
+				gridGroup.visible = true;
+			}
+			
+			private function dataGridClick():void{
+				if(!dataGrid.selectedItem){
+					return;
+				}
+				if(object.type1){
+					selectType1.text = dataGrid.selectedItem.name;
+					object.name1 = dataGrid.selectedItem.name;
+					object.brand1 = dataGrid.selectedItem.brand;
+					object.assetsId1 = dataGrid.selectedItem.id;
+					object.typeId1 = dataGrid.selectedItem.objectTypeId;
+					object.productNo1 = dataGrid.selectedItem.model;
+					object.portCount1 = dataGrid.selectedItem.portCount;
+					object.uHoldCount1 = dataGrid.selectedItem.uHoldCount;
+					v1.enabled = true;
+				}
+				if(object.type2){
+					selectType2.text = dataGrid.selectedItem.name;
+					object.name2 = dataGrid.selectedItem.name;
+					object.brand2 = dataGrid.selectedItem.brand;
+					object.assetsId2 = dataGrid.selectedItem.id;
+					object.typeId2 = dataGrid.selectedItem.objectTypeId;
+					object.productNo2 = dataGrid.selectedItem.model;
+					object.portCount2 = dataGrid.selectedItem.portCount;
+					object.uHoldCount2 = dataGrid.selectedItem.uHoldCount;
+					v2.enabled = true;
+				}
+				if(object.type3){
+					selectType3.text = dataGrid.selectedItem.name;
+					object.name3 = dataGrid.selectedItem.name;
+					object.brand3 = dataGrid.selectedItem.brand;
+					object.assetsId3 = dataGrid.selectedItem.id;
+					object.typeId3 = dataGrid.selectedItem.objectTypeId;
+					object.productNo3 = dataGrid.selectedItem.model;
+					object.portCount3 = dataGrid.selectedItem.portCount;
+					object.uHoldCount3 = dataGrid.selectedItem.uHoldCount;
+					v3.enabled = true;
+				}
+				gridGroup.visible = false;
+				object.uHoldCount = dataGrid.selectedItem.uHoldCount;
+				//选择完默认的总U数之后 查询空U层
+				bgRemote.getEmptyuNos(cabinetId,0,object.uHoldCount);
+				cancel();
+				dataGrid.selectedItem = null;
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<s:BorderContainer width="100%" height="94%" backgroundAlpha="0" borderWeight="2">
+	</s:BorderContainer>
+		<s:VGroup y="5" x="5" width="100%" height="100%">
+			<s:VGroup height="96%" width="100%" horizontalAlign="center" >
+				<s:Label height="18" text="{ResourceManager.getInstance().getString('ViewerStrings','T00238')} {equCode}" textAlign="center" verticalAlign="middle" fontWeight="bold" />
+				<s:HGroup width="100%" height="55%">
+					<s:BorderContainer id="b1" width="31%" height="100%" backgroundAlpha="0" borderWeight="2">
+						<s:layout>
+							<s:VerticalLayout verticalAlign="middle" paddingTop="4" horizontalAlign="center"/>
+						</s:layout>
+						<s:ToggleButton id="tb1" width="30" height="30" label="1"  click="totalNum(1)"/>
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00239')}" width="60" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+						<s:TextInput id="selectType1" editable="false" enabled="false" height="18" width="120" text="{ResourceManager.getInstance().getString('ViewerStrings','I00065')}" fontSize="10" click="selectType(1)"/>
+						<s:VGroup id="v1" width="100%" height="80%" horizontalAlign="center" verticalAlign="middle">
+							<s:VGroup width="100%" height="100%" horizontalAlign="center" verticalAlign="middle" enabled="{v1.enabled}">
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00012')}" height="18" textAlign="left" verticalAlign="middle" fontWeight="bold" />
+								<s:TextInput id="selParentBt" enabled="false" height="18" width="120"/>
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00013')}"  width="60" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+								<s:DropDownList id="uNumCombox" height="18"  width="120" prompt="{ResourceManager.getInstance().getString('ViewerStrings','C00013')}" labelField="name" click="cancel()"/>
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00178')}" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+								<s:DropDownList id="sType1" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" dataProvider="{shelfType}" click="cancel()"/>
+							</s:VGroup>
+						</s:VGroup>
+					</s:BorderContainer>
+					
+					<s:BorderContainer id="b2" width="31%" height="100%" backgroundAlpha="0" borderWeight="2">
+						<s:layout>
+							<s:VerticalLayout verticalAlign="middle" paddingTop="4" horizontalAlign="center"/>
+						</s:layout>
+						<s:ToggleButton id="tb2" width="30" height="30" label="2" click="totalNum(2)"/>	
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00239')}" width="60" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+						<s:TextInput id="selectType2" editable="false" enabled="false" height="18" width="120" text="{ResourceManager.getInstance().getString('ViewerStrings','I00065')}" fontSize="10" click="selectType(2)"/>
+						<s:VGroup id="v2" width="100%" height="80%" horizontalAlign="center" verticalAlign="middle">
+							<s:VGroup width="100%" height="100%" horizontalAlign="center" verticalAlign="middle" enabled="{v2.enabled}">
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00012')}" height="18" textAlign="left" verticalAlign="middle" fontWeight="bold" />
+								<s:TextInput id="selParentBt2" enabled="false" height="18" width="120"/>
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00013')}"  width="60" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+								<s:DropDownList id="uNumCombox2" height="18"  width="120" prompt="请选择" labelField="name" click="cancel()"/>
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+								<s:DropDownList id="sType2" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" dataProvider="{shelfType}" click="cancel()"/>
+							</s:VGroup>
+						</s:VGroup>
+					</s:BorderContainer>
+					
+					<s:BorderContainer id="b3" width="31%" height="100%" backgroundAlpha="0" borderWeight="2">
+						<s:layout>
+							<s:VerticalLayout verticalAlign="middle" paddingTop="4" horizontalAlign="center"/>
+						</s:layout>
+						<s:ToggleButton id="tb3" width="30" height="30" label="3" click="totalNum(3)"/>
+						<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00239')}" width="60" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+						<s:TextInput id="selectType3" editable="false" enabled="false" height="18" width="120" text="{ResourceManager.getInstance().getString('ViewerStrings','I00065')}" fontSize="10" click="selectType(3)"/>
+						<s:VGroup id="v3" width="100%" height="80%" horizontalAlign="center" verticalAlign="middle">
+							<s:VGroup width="100%" height="100%" horizontalAlign="center" verticalAlign="middle" enabled="{v3.enabled}">
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00012')}" height="18" textAlign="left" verticalAlign="middle" fontWeight="bold" />
+								<s:TextInput id="selParentBt3" enabled="false" height="18" width="120"/>
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00013')}"  width="60" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+								<s:DropDownList id="uNumCombox3" height="18"  width="120" prompt="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" labelField="name" click="cancel()"/>
+								<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" height="18" textAlign="right" verticalAlign="middle" fontWeight="bold" />
+								<s:DropDownList id="sType3" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}" dataProvider="{shelfType}" click="cancel()"/>
+							</s:VGroup>
+						</s:VGroup>
+					</s:BorderContainer>
+				</s:HGroup>
+				
+				<s:Group id="gridGroup" width="100%" height="38%" visible="false" click="dataGridClick()">
+					<s:DataGrid id="dataGrid" width="100%" height="100%">
+						<s:columns>
+							<s:ArrayCollection>
+								<s:GridColumn width="25" dataField="no" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00021')}"/>
+								<s:GridColumn dataField="name" headerText="{ResourceManager.getInstance().getString('ViewerStrings','C00002')}"/>
+								<s:GridColumn dataField="model" headerText="{ResourceManager.getInstance().getString('ViewerStrings','C00003')}"/>
+							</s:ArrayCollection>
+						</s:columns>
+					</s:DataGrid>
+				</s:Group>
+				
+				<s:Label id="label" width="100%" height="25" paddingLeft="30" color="red" textAlign="center" verticalAlign="middle" fontWeight="bold" />
+			</s:VGroup>
+			
+			
+			<s:HGroup width="100%" height="4%" horizontalAlign="right" verticalAlign="middle">
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00214')}" click="addShelfInColl()"/>
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="close()"/>
+			</s:HGroup>
+		</s:VGroup>
+</s:Group>

@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"  xmlns:gokei="widgets.WiringSheet.*" creationComplete="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="tsRemote" destination="typeService" fault="onFault(event)">
+			<s:method name="getAllTypes" result="getAllTypesResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="otsRemote" destination="objectTypeService" fault="onFault(event)">
+			<s:method name="getAllObjectTypes" result="getAllObjectTypesResult(event)"/>
+			<s:method name="getObjectTypesByParentTypeId" result="getObjectTypesByParentTypeIdResult(event)"/>
+			<s:method name="deleteObjectTypeById" result="deleteObjectTypeByIdResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			public var objTypeViewStack:ObjectTypeViewStack;
+			[Bindable]
+			private var allObjectTypes:ArrayCollection; //所有的对象
+			[Bindable]
+			private var allTypes:ArrayCollection = new ArrayCollection();
+			[Embed(source="assets/images/i_edit.png")] 
+			[Bindable]
+			public var editIcon:Class;
+			[Embed(source="assets/images/i_delete.png")] 
+			[Bindable]
+			public var delIcon:Class;
+			
+			public function init():void{
+				allTypes.addItemAt( {name : ResourceManager.getInstance().getString("ViewerStrings","T00063"), id : -1}, 0);
+				otsRemote.getAllObjectTypes();
+				tsRemote.getAllTypes();
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event:AppEvent):void{
+				var arr : Object = event.data.arr as Array;
+				for each(var item : String in arr){
+					if (item == EventType.REFRESH_ID[22]){
+						column1.width = column2.width = column3.width = 170;
+						column4.width = column5.width = 80;
+						break;
+					}
+				}
+			}
+			
+			private function getAllObjectTypesResult(event:ResultEvent):void {
+				allObjectTypes = event.result as ArrayCollection;
+			}
+			private function getAllTypesResult(event:ResultEvent):void {
+				var allType : ArrayCollection = event.result as ArrayCollection;
+				for(var i : int = 0 ; i < allType.length ; i ++){
+					allTypes.addItemAt({name: allType[i].name , id : allType[i].id}, i+1);
+				}
+			}
+			private function deleteObjectTypeByIdResult(event:ResultEvent):void {
+				var i:int = event.result as int;
+				if(i == 1){
+					if(parentTypeId.selectedItem && parentTypeId.selectedItem.id != -1){
+						//不是全部 并且选择大类有选
+						otsRemote.getObjectTypesByParentTypeId(parentTypeId.selectedItem.id);
+					}else{
+						otsRemote.getAllObjectTypes();
+					}
+					var obj : Object = { arr : [ EventType.REFRESH_ID[11],EventType.REFRESH_ID[16],EventType.REFRESH_ID[17],EventType.REFRESH_ID[14] ]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("删除成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00054"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if (i == 0){
+//					Alert.show("删除失败,该子类处于使用中!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00024"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			/**
+			 * 切换到添加对象页面
+			 * */
+			private function addObjType():void
+			{
+				AppEvent.dispatch("freshComBoName");
+				objTypeViewStack.selectedChild = objTypeViewStack.nav2;
+				setTimeout(function():void{
+					objTypeViewStack.addObj.currentState = 'add';
+					objTypeViewStack.addObj.label.text = ResourceManager.getInstance().getString("ViewerStrings","T00064");
+				},500);
+			}
+			/**
+			 * 获取对象名称
+			 * */
+			private function getParentTypeName(item:Object,grid:GridColumn):String {
+				var id:String = item.parentTypeId;
+				for(var i:int=0;i<allTypes.length;i++){
+					if(allTypes.getItemAt(i).id == id){
+						return allTypes.getItemAt(i).name;
+					}
+				}
+				return ResourceManager.getInstance().getString("ViewerStrings","T00065");
+			}
+			/**
+			 * 筛选
+			 * */
+			private function checkType():void {
+				if(parentTypeId.selectedItem){
+					if (parentTypeId.selectedItem.id == -1){
+						otsRemote.getAllObjectTypes();
+					} else {
+						otsRemote.getObjectTypesByParentTypeId(parentTypeId.selectedItem.id);
+					}
+				}
+			}
+			private function getObjectTypesByParentTypeIdResult(event:ResultEvent):void {
+				dataGrid.dataProvider = event.result as ArrayCollection;	 
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+
+	<s:Label id="label" color="yellow" text="{ResourceManager.getInstance().getString('ViewerStrings','T00066')}" x="10"/>
+	<s:Group left="10" right="10" top="15" bottom="10" >
+		<s:DataGrid id="dataGrid" width="100%" height="215" dataProvider="{allObjectTypes}">
+			<s:columns>
+				<s:ArrayCollection>
+					<s:GridColumn id="column1" dataField="abbrName" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00067')}" width="170" minWidth="100"/>
+					<s:GridColumn id="column2" dataField="name" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00068')}" width="170" minWidth="100"/>
+					<s:GridColumn id="column3" dataField="parentTypeId" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00069')}" labelFunction="getParentTypeName" width="170" minWidth="100"/>
+					<s:GridColumn id="column4" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00050')}" width="80" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton id="editBtn" width="48" x="15" y="2" click="editObjectType()" icon="{outerDocument.editIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import com.gokei.managers.HashTableManager;
+											import mx.resources.ResourceManager;
+											public function editObjectType():void{
+												var typeId:String = outerDocument.dataGrid.selectedItem.id;
+												outerDocument.objTypeViewStack.selectedChild = outerDocument.objTypeViewStack.nav2;
+												setTimeout(function():void{
+													outerDocument.objTypeViewStack.addObj.currentState = 'edit';
+													outerDocument.objTypeViewStack.addObj.label.text = ResourceManager.getInstance().getString("ViewerStrings","T00070");
+													outerDocument.objTypeViewStack.addObj.getObjTypeById(typeId);
+												},500);
+												HashTableManager.instance.put("typeId",typeId);
+											}
+											override public function prepare(hasBeenRecycled:Boolean):void {
+												if(data){
+													if (data.isSysOT == 1) {
+														editBtn.visible = false;
+													} else {
+														editBtn.visible = true;
+													}
+												}
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+					<s:GridColumn id="column5" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00052')}" width="80" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton id="delBtn" width="48" x="15" y="2" click="delObjectType()" icon="{outerDocument.delIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import mx.controls.Alert;
+											import mx.events.CloseEvent;
+											import mx.resources.ResourceManager;
+											private function delObjectType():void{
+//												Alert.show("您确定要删除吗?",
+												Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),
+													"",
+													Alert.YES|Alert.NO,
+													null,
+													judgeDel);
+											}
+											private function judgeDel(event:CloseEvent):void{
+												if(event.detail == Alert.YES){
+													var typeId:String = outerDocument.dataGrid.selectedItem.id;
+													outerDocument.otsRemote.deleteObjectTypeById(typeId);
+												}
+											}
+											override public function prepare(hasBeenRecycled:Boolean):void {
+												if(data){
+													trace(data.name + data.isSysOT)
+													if (data.isSysOT == 1) {
+														delBtn.visible = false;
+													} else {
+														delBtn.visible = true;
+													}
+												}
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+				</s:ArrayCollection>
+			</s:columns>
+		</s:DataGrid>
+		
+		<s:HGroup y="213" width="100%">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00071')}" width="85%">
+				<s:DropDownList id="parentTypeId" dataProvider="{allTypes}" labelField="name" change="checkType()" width="130" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+			</s:FormItem>
+
+			<s:FormItem width="15%">
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00072')}" click="addObjType()"/>
+			</s:FormItem>
+		</s:HGroup>
+		
+	</s:Group>
+</s:Group>

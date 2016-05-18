@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:HGroup xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		  xmlns:s="library://ns.adobe.com/flex/spark" initialize="init()"
+		  xmlns:mx="library://ns.adobe.com/flex/mx" width="100%">
+	
+	<fx:Declarations>
+		<s:RadioButtonGroup id="bigType"   change="rbChange(event);"/>
+		<s:RemoteObject id="typeRemote" destination="objectTypeService" fault="onFault(event)">
+			<s:method name="getClassifiedObjectTypes" result="getAllTypesResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script> 
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import spark.events.DropDownEvent;
+			
+			import widgets.CabinetManager.CabinetMngWidget;
+			
+			private var cabinetArray:ArrayCollection;// 机柜
+			
+			private var smartShelfArray:ArrayCollection;// 智能管理架
+			
+			private var shelfArray:ArrayCollection;// 配线架
+			
+			private var sysEqmtArray:ArrayCollection;// 系统设备
+			
+			private var netEqmtArray:ArrayCollection;//网络设备
+			
+			private var otherArray:ArrayCollection;//其他类型
+			
+			private var terminalArray:ArrayCollection;
+			
+			private var _grayout:Boolean;
+			
+			public var operation:String;
+			
+			public var cabWidget:CabinetMngWidget;
+			
+			public function grayout(bool:Boolean,mid:Boolean):void {
+				if (bool) {
+					for (var i:int = 0; i < bigType.numRadioButtons;i++) {
+						if (bigType.getRadioButtonAt(i) != bigType.selection) {
+							bigType.getRadioButtonAt(i).enabled = false;
+						}
+					}
+				} else {
+					for (var j:int = 0; j < bigType.numRadioButtons;j++) {
+						bigType.getRadioButtonAt(j).enabled = true;
+					}
+				}
+				if (mid) {
+					midType.enabled = false;
+				} else {
+					midType.enabled = true;
+				}
+			}
+			
+			private function init():void{
+				bigType.selectedValue = "cabinet";
+				typeRemote.getClassifiedObjectTypes();
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event:AppEvent):void {
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[11] == item) {
+						typeRemote.getClassifiedObjectTypes();
+						break;
+					}
+				}
+			}
+			
+			/**
+			 * 获得所有大类类型
+			 */ 
+			private function getAllTypesResult(event:ResultEvent):void{
+				var allArray:ArrayCollection = event.result as ArrayCollection;
+				cabinetArray = allArray.getItemAt(5) as ArrayCollection;
+				sysEqmtArray = allArray.getItemAt(4) as ArrayCollection;
+				smartShelfArray = allArray.getItemAt(1) as ArrayCollection;
+				shelfArray = allArray.getItemAt(0) as ArrayCollection;
+				netEqmtArray = allArray.getItemAt(2) as ArrayCollection;
+				otherArray = allArray.getItemAt(3) as ArrayCollection;
+				terminalArray = allArray.getItemAt(6) as ArrayCollection;
+				bigType.dispatchEvent(new Event(Event.CHANGE));
+			}
+			
+			private function midTypeChange():void{
+				if (operation == "new") {
+					AppEvent.dispatch(EventType.MIDTYPE_CHANGE_NEW,midType.selectedItem.id);
+				} else if(operation == "build") {
+					AppEvent.dispatch(EventType.MIDTYPE_CHANGE_BUILD,midType.selectedItem.id);
+				}
+			}
+		
+			private function rbChange(event:Event):void {
+				var selectValue:String = event.currentTarget.selectedValue as String;
+				midType.dataProvider = null;
+				switch(selectValue ){
+					case "cabinet":
+						midType.dataProvider = cabinetArray;
+						break;
+					case "smartShelf":
+						midType.dataProvider = smartShelfArray;
+						break;
+					case "shelf":
+						midType.dataProvider = shelfArray;
+						break;
+					case "sysEqmt":
+						midType.dataProvider = sysEqmtArray;
+						break;
+					case "netEqmt":
+						midType.dataProvider = netEqmtArray;
+						break;
+					case "other":
+						midType.dataProvider = otherArray;
+						break;
+					case "terminal" :
+						midType.dataProvider = terminalArray;
+						break;
+					default:
+					{
+						break;
+					}
+				}
+				midType.selectedIndex = 0;
+				setTimeout(function():void {
+					midType.dispatchEvent(new DropDownEvent(DropDownEvent.CLOSE));
+				},200);
+			}
+			
+			public function shelfLink():void {
+				bigType.selectedValue = "shelf";
+				bigType.enabled = false;
+				midType.enabled = true;
+			}
+			
+			public function sysEqmtLink(type:String):void {
+				bigType.selectedValue = "shelf";
+				bigType.enabled = false;
+				if (type == "controller") {
+					midType.selectedIndex = 1;
+				} else {
+					midType.selectedIndex = 0;
+				}
+				midType.enabled = false;
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);	
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:HGroup  paddingLeft="20" paddingTop="10"  horizontalAlign="left" width="50%"  height="100%" verticalAlign="middle" >
+		<s:RadioButton id="r0" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="cabinet" label="{ResourceManager.getInstance().getString('ViewerStrings','T00165')}" groupName="bigType" />
+		<s:RadioButton id="r2" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="smartShelf" label="{ResourceManager.getInstance().getString('ViewerStrings','T00166')}" groupName="bigType" />
+		<s:RadioButton id="r3" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="shelf" label="{ResourceManager.getInstance().getString('ViewerStrings','T00167')}" groupName="bigType" />
+		<s:RadioButton id="r1" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="sysEqmt" label="{ResourceManager.getInstance().getString('ViewerStrings','T00168')}" groupName="bigType" />
+		<s:RadioButton id="r4" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="netEqmt" label="{ResourceManager.getInstance().getString('ViewerStrings','T00169')}"  groupName="bigType" />
+		<s:RadioButton id="r5" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="other" label="{ResourceManager.getInstance().getString('ViewerStrings','T00170')}"  groupName="bigType"/>
+		<s:RadioButton id="r6" skinClass="widgets.CabinetManager.mySkin.radioSkin" value="terminal" label="{ResourceManager.getInstance().getString('ViewerStrings','T00171')}"  groupName="bigType"/>
+	</s:HGroup>
+	<s:HGroup  paddingRight="50" paddingTop="10"  horizontalAlign="right" width="50%" height="100%" verticalAlign="middle">
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00172')}"/>
+		<s:DropDownList prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" id="midType"    width="150" close="midTypeChange()" labelField="name"/>
+	</s:HGroup>
+</s:HGroup>

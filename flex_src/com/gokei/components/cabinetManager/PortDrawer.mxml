@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" initialize="init()">
+	
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			
+			import spark.components.Image;
+			
+			public var code:String;
+			
+			public var infoCode:String;
+			
+			public var parentType:String;
+			
+			private var _labelStr:String;
+			
+			private var _portNumber:String;
+			
+			private var _status:int;
+			
+			private var _linetype:String;
+			
+			private var _selected:Boolean;
+			
+			public var available:Boolean;
+		
+			private var timer:Timer = new Timer(200);
+			
+			private var alarmStatus:Boolean = false;
+			
+			private function init():void {
+				timer.addEventListener(TimerEvent.TIMER,onTimer);
+				addEventListener(MouseEvent.CLICK,mouseClick);
+			}
+			
+			private function onTimer(event:Event):void {
+				if (alarmStatus) {
+					fill.color = 0xff0000;
+					alarmStatus = false;
+				} else {
+					fill.color = 0xe8e8e8;
+					alarmStatus = true;
+				}
+			}
+			
+			public function startAlarm():void {
+				timer.start();
+			}
+			
+			public function stopAlarm():void {
+				timer.stop();
+				fill.color = 0xe8e8e8;
+			}
+			
+			public function get portNumber():String {
+				return _portNumber;
+			}
+
+			public function set portNumber(value:String):void
+			{
+				_portNumber = value;
+				labNumber.text = _portNumber;
+				
+			}
+
+			public function get selected():Boolean
+			{
+				return _selected;
+			}
+
+			public function set selected(value:Boolean):void {
+				_selected = value;
+				if(_selected){
+					fill.color = 0x0084f3;
+				}else{
+					fill.color = 0xe8e8e8;
+				}
+			}
+			
+			public function set linetype(str:String):void {
+				_linetype = str;
+			}
+
+			public function get linetype():String{
+				return _linetype;
+			}
+			
+			public function get portState():int {
+				return _status;
+			}
+
+			public function set status(value:int):void {
+				_status = value;
+				img.source = "assets/images/portstatus" +_linetype +  _status + ".png";
+			}
+			
+			public function get status():int {
+				return _status;
+			}
+
+			public function get labelStr():String {
+				return _labelStr;
+			}
+
+			public function set labelStr(value:String):void {
+				_labelStr = value;
+				lab.text = _labelStr;
+				var size:Number = (12/100)*this.width;
+				var size2:Number = (12/14)*this.height/2;
+				if(size>size2){
+					lab.setStyle("fontSize",size2);
+					labNumber.setStyle("fontSize",size2);
+				}else{
+					lab.setStyle("fontSize",size);
+					labNumber.setStyle("fontSize",size);
+				}
+			}
+			
+			private function mouseClick(event:MouseEvent):void {
+				var evt:GridCabinetEvent = new GridCabinetEvent(GridCabinetEvent.PORT_CLICK);
+				evt.portDraw = this;
+				dispatchEvent(evt);
+			}
+
+		]]>
+	</fx:Script>
+	
+	
+	<s:Rect bottomLeftRadiusX="0" 
+			bottomRightRadiusX="0" 
+			topLeftRadiusX="0" 
+			topRightRadiusX="0" 
+			top="0" left="0" right="0" bottom="0">
+		<s:stroke>
+			<s:SolidColorStroke color="0xffdf0a"/>
+		</s:stroke>
+		<s:fill>
+			<s:SolidColor id="background" color="0x0f481f" />
+		</s:fill>
+	</s:Rect>
+	
+	<s:Rect top="2" left="3" bottom="{this.height/2}" right="3">
+		<s:fill>
+			<s:SolidColor id="fill" color="0xe8e8e8" />
+		</s:fill>
+	</s:Rect>
+	<s:Label id="labNumber" top="2" width="{this.width}" height="{this.height/2-2}" color="black" textAlign="center"/>
+	<s:Label width="{this.width}" height="{this.height/2}" bottom="0" id="lab"  textAlign="center" horizontalCenter="0" />
+	<s:Rect top="0" left="0" right="0" bottom="0">
+	</s:Rect>
+	<s:Image id="img" x="10" y="2" width="9" height="7.2" smooth="true" />
+</s:Group>

@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"
+				   xmlns:Chain="widgets.Chain.*"
+				   creationComplete="init()">
+	<fx:Declarations>
+		<s:AnimateFilter id="animate" bitmapFilter="{gf}" duration="300" repeatBehavior="reverse"
+						 repeatCount="0">
+			<s:SimpleMotionPath property="alpha" valueFrom="0" valueTo="1"/>
+		</s:AnimateFilter>
+		<s:GlowFilter id="gf" alpha="1" strength="255" blurX="5" blurY="5" color="0xff00ff"/>
+		<s:RemoteObject id="csRemote" destination="chainService" fault="onFault(event)">
+			<s:method name="getChainByPortId" result="chainResult(event)"/>
+			<s:method name="getChainBySpotPortCode" result="chainResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import flash.utils.setTimeout;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.graphics.SolidColorStroke;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import spark.components.Image;
+			import spark.components.Label;
+			import spark.primitives.Rect;
+			
+			private var portId:int;
+			private var portType:int; 	//0 端口  1 信息点
+			private var spotCode:String; //信息点编号
+			
+			private function init():void{
+				AppEvent.addListener(EventType.CHAIN_SHOW,chainShow); //显示链路
+			}
+			
+			private function chainShow(event:AppEvent):void {
+				var obj:Object = event.data;
+				portType = obj.type as int;
+				if(portType == 0){
+					//端口告警
+					portId = int(obj.portId);
+					csRemote.getChainByPortId(portId);
+				}
+				else if(portType == 1){
+					//点位图 信息点
+					spotCode = obj.spotCode as String;
+					// 建筑ID为1（楼宇版的只有一栋建筑）
+					csRemote.getChainBySpotPortCode(spotCode,1);
+				}
+			}
+			private function chainResult(event:ResultEvent):void {
+				var chain:ArrayCollection = event.result as ArrayCollection;
+				container.removeAllElements();
+				var frontGroup:ChainGroup;
+				var chainGroup:ChainGroup;
+				var upLinkGroup:UpLinkGroup = new UpLinkGroup();
+				var currentX:Number = 20; //初始化groupX groupY坐标
+				var currentY:Number = 30;
+				//var lineXFrom:Number = 0; //line的起始坐标
+				//var lineXTo:Number = 0;
+				var cabinetXFrom:Number = 20; //机柜的起始坐标
+				var portNum:int = 1;
+				var parentEqual:Boolean = false; //判断当前对象的父对象类型和上一个对象的父对象类型是否是同一个
+				var arrow:Image = new Image();
+				arrow.width = 50;
+				arrow.height = 50;
+				var scs:SolidColorStroke = new SolidColorStroke();
+				scs.color = 0x00ff00;
+				scs.weight = 2;
+				var currentPort:Image;
+				var frontPort:Image;
+				var frontObj:Object = null; //取出前一个对象
+				var isFirstPort:Boolean = true; //如果此端口的父对象是配线架，则判断当前的端口时否是第一个
+				
+				for(var i : int = 0;i < chain.length; i++){
+					var obj:Object = chain[i]; //取出集合中的对象 
+//					if(i == chain.length - 1 && obj.type == 3){
+//						//最后一个
+//						container.addElement(upLinkGroup);
+//						upLinkGroup.x = currentX;
+//						upLinkGroup.y = 125;
+//					}
+					var location:String = ""; //位置
+					if(obj.building != null){
+//						location += "建筑："+obj.building.name +"\n";
+						location += ResourceManager.getInstance().getString("ViewerStrings","T00175")+obj.building.name +"\n";
+					}
+					if(obj.area != null){
+						location += ResourceManager.getInstance().getString("ViewerStrings","T00036")+obj.area.name +"\n";
+					}
+					//房间
+					if(obj.cabinet != null){
+						location += ResourceManager.getInstance().getString("ViewerStrings","T00176")+obj.cabinet.code +"\n";
+						if(obj.parent.uNo != null){
+							location += ResourceManager.getInstance().getString("ViewerStrings","T00177")+obj.parent.uNo +"U\n";
+						}
+					}
+					//配线架类型
+					if(obj.parentType == "0") {
+//						location += "配线架类型：" ;
+						location += ResourceManager.getInstance().getString("ViewerStrings","T00178") ;
+						if(obj.parent.type == 0){
+//							location += '主干配线架';
+							location += ResourceManager.getInstance().getString("ViewerStrings","T00075")+ "\n";
+						} else if (obj.parent.type == 1){
+//							location += '水平配线架';
+							location += ResourceManager.getInstance().getString("ViewerStrings","T00076")+ "\n";
+						} else if(obj.parent.type == 2){
+//							location += '交换机配线架';
+							location += ResourceManager.getInstance().getString("ViewerStrings","T00077")+ "\n";
+						}
+					}
+					
+					if(frontObj && frontObj.parentId != obj.parentId){
+						isFirstPort = true;
+					}
+					
+					if (obj.parentType == "2") {
+						//如果为信息点
+						frontGroup = chainGroup;
+						chainGroup = new ChainGroup(obj.parentType);
+						chainGroup.initLable(location,"");
+						container.addElement(chainGroup);
+						chainGroup.x = currentX;
+						chainGroup.y = currentY;
+						currentX += 250;
+						currentPort = chainGroup.portLocation("",true,obj.parent.code+obj.code);
+					} else if(obj.parentType == "0") {
+						if(isFirstPort){
+							frontGroup = chainGroup;
+							chainGroup = new ChainGroup(obj.parentType);
+//							chainGroup.initLable(location,"配线架编号:" + obj.parent.code);
+							chainGroup.initLable(location,ResourceManager.getInstance().getString("ViewerStrings","T00179") + obj.parent.code);
+							container.addElement(chainGroup);
+							chainGroup.x = currentX;
+							chainGroup.y = currentY;
+							currentX += 250;
+						}
+						currentPort = chainGroup.portLocation(obj.type,isFirstPort,obj.code);
+						
+					} else if(obj.parentType == "1") {
+						//设备
+						if(isFirstPort){
+							frontGroup = chainGroup;
+							chainGroup = new ChainGroup(obj.parentType);
+//							chainGroup.initLable(location,"设备编号:" + obj.parent.code);
+							chainGroup.initLable(location,ResourceManager.getInstance().getString("ViewerStrings","T00163") + obj.parent.code);
+							container.addElement(chainGroup);
+							chainGroup.x = currentX;
+							chainGroup.y = currentY;
+							currentX += 250;
+						}
+						currentPort = chainGroup.portLocation("0",isFirstPort,obj.code);
+					}//定位端口和箭头
+					if(portType == 0 && portId == obj.id) { //端口 配线架
+						arrow.source = "assets/images/arrow1.png";
+						arrow.smooth = true;
+						container.addElement(arrow);
+						arrow.x = chainGroup.x + 60;
+						arrow.y = 200;
+						animate.target = currentPort;
+						animate.play();
+					}
+					
+					if(i == 0){
+						isFirstPort = false;
+						frontPort = currentPort;
+						frontObj = obj;
+						//如果第一个为信息点
+						if(obj.parentType == "2"){
+							isFirstPort = true;
+						}
+						continue;
+					}
+					
+					if(obj.cabinet && frontObj.cabinet && obj.cabinet.id == frontObj.cabinet.id){
+						portNum ++;
+					} else {
+						if (frontObj.parentType != "2" && portNum > 2) {
+							var cabinetRect:Rect = new Rect();
+							cabinetRect.topLeftRadiusX = 5;
+							cabinetRect.topRightRadiusX = 5;
+							cabinetRect.width = (portNum / 2) * 200 + ((portNum / 2) - 1) * 50;
+							cabinetRect.height = 170;
+							cabinetRect.stroke = scs;
+							container.addElement(cabinetRect);
+							cabinetRect.x = cabinetXFrom;
+							var cabinetLab:Label = new Label();
+							cabinetLab.setStyle("color","0xffff00");
+//							cabinetLab.text = "机柜编号："+ frontObj.cabinet.code;
+							cabinetLab.text = ResourceManager.getInstance().getString("ViewerStrings","T00176")+ frontObj.cabinet.code;
+							container.addElement(cabinetLab);
+							cabinetLab.x = cabinetXFrom + 10;
+							cabinetLab.y = 10;
+						}
+						portNum = 1;
+						//画下一个机柜的起始坐标
+						cabinetXFrom = chainGroup.x;
+					}
+					if (isFirstPort && frontPort) {
+						var link:ChainLinker = new ChainLinker();
+						link.lineRadius = 5;
+						link.lineWidth = 5;
+						link.yFrom = 164;
+						link.yTo = 164;
+						
+						// 只判断铜揽 光缆
+						if(obj.rfid){
+							//如果有RFID 则为跳线
+							if(obj.lineType == '0'){
+								//铜
+								link.lineColor = 0x0481f5;
+							}else{
+								//光
+								link.lineColor = 0xfaeb00;
+							}
+						}else{
+							if(obj.lineType == '0'){
+								link.lineColor = 0x959595;
+							}else{
+								link.lineColor = 0x000000;
+							}
+						}
+						link.xFrom = frontGroup.x + frontPort.x + 10;
+						link.xTo = chainGroup.x + currentPort.x + 15;
+						container.addElement(link);
+					}
+					frontPort = currentPort;
+					isFirstPort = !isFirstPort;
+					frontObj = obj;
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<viewer:WidgetTemplate width="1200" height="330">
+		<s:Scroller width="100%" interactionMode="touch">
+			<s:Group id="container" y="30" height="280"/>
+		</s:Scroller>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

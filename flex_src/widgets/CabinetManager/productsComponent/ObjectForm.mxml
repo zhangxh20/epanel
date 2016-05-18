@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 设备新建
+//
+// @Author zhang
+// @Version v1.0
+// @Date 2012-12
+///////////////////////////////////////////////////////////////////////////
+-->
+<mx:ViewStack xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		xmlns:s="library://ns.adobe.com/flex/spark" 
+		xmlns:mx="library://ns.adobe.com/flex/mx" 
+		xmlns:cabinetManager="widgets.CabinetManager.*"
+		xmlns:productsCompont="widgets.CabinetManager.productsComponent.*" 
+		width="800" height="100%" layoutDirection="ltr" creationComplete="init()">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+		<s:Move id="view1ShowEffect" yFrom="{this.height}" yTo="0" />
+		<s:Move id="view1HideEffect" yFrom="0" yTo="{this.height}" duration="10" />
+		<s:Move id="view2ShowEffect" yFrom="{this.height}" yTo="0" />
+		<s:Move id="view2HideEffect" yFrom="0" yTo="{this.height}" duration="10" />
+		
+		<s:RemoteObject id="dataRemote" destination="assetsService" fault="onFault(event)">
+			<s:method name="getAssetsInfoByObjectTypeId" result="getDataListResult(event)"/>
+			<s:method name="deleteAssetsById" result="delResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Metadata>
+		[ResourceBundle("ViewerStrings")]  
+	</fx:Metadata>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.collections.ArrayList;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.resources.ResourceManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			
+			import spark.components.gridClasses.GridColumn;
+			
+			[Bindable]
+			public var datasource:ArrayCollection = new ArrayCollection([]);
+			
+			[Bindable]
+			public var typeSelect:TypeSelectBox;// 类型选择
+			
+			[Bindable]
+			private var midType:String; // 中分类（ID）
+			
+			private function init():void{
+				dg.addEventListener(ProductGridEvent.ITEM_DEL,gridItemDel);
+				dg.addEventListener(ProductGridEvent.ITEM_EDIT,gridItemEdit);
+				AppEvent.addListener(EventType.MIDTYPE_CHANGE_NEW,midTypeChangeNew);
+				typeSelect.bigType.dispatchEvent(new Event(Event.CHANGE));
+			}
+			
+			private function midTypeChangeNew(event:AppEvent):void {
+				midType = event.data as String;
+				dataRemote.getAssetsInfoByObjectTypeId(midType);
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			/**
+			 * 添加产品的表单中，添加，编辑，取消后，返回产品列表时，刷新
+			 */
+			public function refresh():void {
+				selectedIndex = 0;
+				typeSelect.grayout(false,false);
+				dataRemote.getAssetsInfoByObjectTypeId(midType);
+			}
+			
+			/**
+			 * 产品添加
+			 */ 
+			private function showAdd():void{
+				selectedIndex = 1;
+				typeSelect.grayout(true,false);
+				setTimeout(function():void{
+					addProducts.productInputForm.productObj = null;
+				},100);
+				setTimeout(function():void{
+					addProducts.productInputForm.bigTypeChangeRefresh(typeSelect.bigType.selectedValue as String);
+				},200);
+			}
+			
+			/**
+			 * 获得表格数据
+			 */ 
+			private function getDataListResult(event:ResultEvent):void{
+				var datalist:ArrayCollection = event.result as ArrayCollection;
+				var viewList:ArrayCollection = new ArrayCollection([]);
+				var cols:ArrayList  = new ArrayList();
+				var col0:GridColumn = new GridColumn();
+				col0.dataField = "serialID";
+				col0.headerText = "";
+				col0.width=30;
+				cols.addItem(col0);
+				var col1:GridColumn = new GridColumn();
+				col1.dataField = "image";
+//				col1.headerText = "缩略图";
+				col1.headerText = ResourceManager.getInstance().getString("ViewerStrings","T00147");
+				col1.width = 60;
+				cols.addItem(col1);
+				var col2:GridColumn = new GridColumn();
+				col2.dataField = "name";
+//				col2.headerText = "名称";
+				col2.headerText = ResourceManager.getInstance().getString("ViewerStrings","C00002");
+				cols.addItem(col2);
+				var col3:GridColumn = new GridColumn();
+				col3.dataField = "brand";
+//				col3.headerText = "品牌";
+				col3.headerText = ResourceManager.getInstance().getString("ViewerStrings","C00001");
+				cols.addItem(col3);
+				var col4:GridColumn = new GridColumn();
+				col4.dataField = "model";
+//				col4.headerText = "型号";
+				col4.headerText = ResourceManager.getInstance().getString("ViewerStrings","C00003");
+				cols.addItem(col4);
+				if(datalist.length > 0) {
+					for (var k:int = 0; k < datalist[0].assetsSpecInfoList.length; k++) {
+						var col:GridColumn = new GridColumn();
+						col.dataField = datalist[0].assetsSpecInfoList[k].name;
+						col.headerText = ResourceManager.getInstance().getString("ViewerStrings",datalist[0].assetsSpecInfoList[k].name);
+						col.sortCompareFunction = function sortCompareFunction(obj1:Object, obj2:Object, column:GridColumn):int{
+							var num1 : int;
+							var num2 : int;
+							switch (column.dataField){
+								case "uCount" ://总U数
+									num1 = obj1.uCount;
+									num2 = obj2.uCount;
+									return CommonUtil.sortNumber(num1,num2);
+									break;
+								case "uHoldCount" : //所占U数
+									num1 = obj1.uHoldCount;
+									num2 = obj2.uHoldCount;
+									return CommonUtil.sortNumber(num1,num2);
+								case "portCount" : //电口
+									num1 = obj1.portCount;
+									num2 = obj2.portCount;
+									return CommonUtil.sortNumber(num1,num2);
+								case "fportCount" : //光口
+									num1 = obj1.fportCount;
+									num2 = obj2.fportCount;
+									return CommonUtil.sortNumber(num1,num2);
+								default:
+									return 0;
+									break;
+							}
+						}
+						cols.addItem(col);
+					}
+				}
+				var col6:GridColumn = new GridColumn();
+				col6.dataField = "remark";
+//				col6.headerText = "备注";
+				col6.headerText = ResourceManager.getInstance().getString("ViewerStrings","T00083");
+				cols.addItem(col6);
+				var col7:GridColumn = new GridColumn();
+//				col7.headerText = "编辑";
+				col7.headerText = ResourceManager.getInstance().getString("ViewerStrings","T00050");
+				col7.itemRenderer =new ClassFactory(GridEditItemRender);
+				col7.width=40;
+				cols.addItem(col7);
+				var col8:GridColumn = new GridColumn();
+//				col8.headerText = "删除";
+				col8.headerText = ResourceManager.getInstance().getString("ViewerStrings","T00052");
+				col8.itemRenderer =new ClassFactory(GridDeleteItemRender);
+				col8.width=40;
+				cols.addItem(col8);
+				dg.columns = cols;
+				for(var i:int=0;i<datalist.length;i++) {
+					var newObj:Object = new Object();
+					var ai:Object = datalist[i];
+					newObj.id = ai.id;
+					newObj.serialID = i+1;
+					newObj.image = ai.image;
+					newObj.name = ai.name;
+					newObj.brand = ai.brand;
+					newObj.model = ai.model;
+					newObj.remark = ai.remark;
+					newObj.objectTypeId = ai.objectTypeId;
+					newObj.isSysAssets = ai.isSysAssets;
+					for (var j:int = 0; j < ai.assetsSpecInfoList.length; j++) {	
+						var aslist:Object = ai.assetsSpecInfoList[j];
+						var str:String = aslist.name;
+						newObj[str] = aslist.specValue;
+					}
+					viewList.addItem(newObj);
+				}
+				datasource = viewList;
+			}
+			
+			private var delId:int;
+			
+			private function gridItemDel(event:ProductGridEvent):void{
+				delId = int(event.data.id);
+//				Alert.show("您确定要删除吗?",
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),
+					"",
+					Alert.YES|Alert.NO,
+					null,
+					judgeDel);
+			}
+			
+			private function judgeDel(event:CloseEvent):void{
+				if(event.detail == Alert.YES){
+					dataRemote.deleteAssetsById(delId);
+				}
+			}
+			
+			protected function delResult(event:ResultEvent):void {
+				if (event.result) {
+					dataRemote.getAssetsInfoByObjectTypeId(midType);
+					AppEvent.dispatch(EventType.PRODUCT_REFRESH);
+				} else {
+//					Alert.show("该产品已被安装，无法删除!");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00075"));
+				}
+				
+			}
+			
+			/**
+			 * 表格上点击编辑按钮
+			 */  
+			private function gridItemEdit(event:ProductGridEvent):void{
+				var obj:Object = event.data;
+				selectedIndex = 1;
+				typeSelect.grayout(true,true);
+				setTimeout(function():void{
+					addProducts.productInputForm.productObj = obj;
+				},100);
+				setTimeout(function():void{
+					addProducts.productInputForm.bigTypeChangeRefresh(typeSelect.bigType.selectedValue as String);
+				},200);
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:NavigatorContent width="100%" height="100%"  horizontalCenter="0" verticalCenter="0" hideEffect="{view1HideEffect}"  showEffect="{view1ShowEffect}"	>
+		<s:Group id="vbox" width="100%" height="100%" >
+			<s:DataGrid top="0" bottom="20"   id="dg" itemRenderer="widgets.CabinetManager.mySkin.item" dataProvider="{datasource}"
+						width="100%" height="100%">			
+			</s:DataGrid>
+			<s:HGroup width="100%" horizontalAlign="right" bottom="0">
+				<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00148')}" enabled="{typeSelect.bigType.selectedValue != 'smartShelf' &amp;&amp; typeSelect.bigType.selectedValue!='sysEqmt' }"  click="showAdd()"/>
+			</s:HGroup>
+		</s:Group>
+	</s:NavigatorContent>
+	<s:NavigatorContent width="100%"  hideEffect="{view2HideEffect}" horizontalCenter="0" verticalCenter="0"  showEffect="{view2ShowEffect}" >
+		<s:VGroup width="100%" height="100%"  horizontalAlign="center" verticalAlign="top">
+			<productsCompont:AddProducts id="addProducts" midType="{midType}" objform="{this}"/>
+		</s:VGroup>	
+	</s:NavigatorContent>
+</mx:ViewStack>

@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" 
+		 xmlns:gokei="widgets.WiringSheet.*" creationComplete="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="wssRemote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="getCabinetsByBuildingId" result="getCabinetsByBuildingIdResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="csRemote" destination="cabinetService" fault="onFault(event)">
+			<s:method name="getAllCabinets" result="getAllCabinetsResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			public var dataGrid:WiringSheetDataGrid;
+			
+			[Bindable]
+			private var operateNameArr:ArrayCollection = new ArrayCollection([
+//				{key:"0",name:"添加跳线"},{key:"1",name:"删除跳线"},{key:"2",name:"变更跳线"},{key:"3",name:"换线"}
+				{key:"0",name:ResourceManager.getInstance().getString("ViewerStrings","T00314")},{key:"1",name:ResourceManager.getInstance().getString("ViewerStrings","T00315")},{key:"2",name:ResourceManager.getInstance().getString("ViewerStrings","T00316")},{key:"3",name:ResourceManager.getInstance().getString("ViewerStrings","T00317")}
+			]);
+			[Bindable]
+			private var cabinetArr:ArrayCollection;//配线单页面 机柜
+	
+			public function init():void{
+				csRemote.getAllCabinets();		
+			}
+			
+			protected function getAllCabinetsResult(event:ResultEvent):void{
+				cabinetArr = event.result as ArrayCollection;
+				cabinet1Combox.dataProvider = cabinetArr;
+				cabinet2Combox.dataProvider = copyAttribute(cabinetArr);
+			}
+			
+			protected function getCabinetsByBuildingIdResult(event:ResultEvent):void{
+				cabinetArr = event.result as ArrayCollection;
+				cabinet1Combox.dataProvider = copyAttribute(cabinetArr)
+				cabinet2Combox.dataProvider = copyAttribute(cabinetArr);
+			}
+			private function copyAttribute(array:ArrayCollection):ArrayCollection{
+				try{
+					var byteArray:ByteArray = new ByteArray();
+					byteArray.writeObject(array);
+					byteArray.position = 0;
+					var arr:ArrayCollection = byteArray.readObject() as ArrayCollection;
+					return arr;
+				}catch(e:EOFError){
+					trace(e);
+					return null;
+				}
+				return null;
+			}
+			/**
+			 * 查询条件 通过建筑获得机柜
+			 * 获得机柜
+			 * */	
+			protected function getCabinet(event:ListEvent):void{
+				if(buildCombox.selectedItem!=null){
+					cabinet1Combox.text = "";
+					cabinet2Combox.text = "";
+					cabinet1Combox.selectedIndex = -1;
+					cabinet2Combox.selectedIndex = -1;
+					var buildId:int = buildCombox.selectedItem.id;
+					wssRemote.getCabinetsByBuildingId(buildId);
+				}
+			}
+			
+			public var createTimeFrom:Date = null;
+			public var createTimeTo:Date = null;
+			public var cabinetId:String = null;
+			public var targetCabinetId:String = null;
+			public var operation:String = null;
+			public var creatorNames:String = null;
+			
+			/**
+			 * 根据条件 筛选出符合的记录
+			 * */
+			protected function queryWireSheets():void{
+				if(dataGrid.currentState == "init"){
+					//配线单页面查询
+					getQueryValue();
+					dataGrid.pageNo = 1;
+					dataGrid.queryPage.numInput.text = "1";
+					if(dataGrid.wsw.flag == "true"){
+						dataGrid.wssRemote.queryWireSheet(createTimeFrom,createTimeTo,cabinetId,targetCabinetId,
+							operation,creatorNames,dataGrid.pageNo);
+					}else if(dataGrid.wsw.flag == "false"){
+						dataGrid.wssRemote.queryOwnWireSheet(createTimeFrom,createTimeTo,cabinetId,targetCabinetId,
+							operation,creatorNames,dataGrid.pageNo);
+					}
+				}else if(dataGrid.currentState == "history"){
+					//历史页面查询
+					getQueryValue();
+					dataGrid.pageNo = 1;
+					dataGrid.queryPage.numInput.text = "1";
+					if(dataGrid.wsw.flag == "true"){
+						dataGrid.wssRemote.queryHistoryWireSheet(createTimeFrom,createTimeTo,cabinetId,targetCabinetId,
+							operation,creatorNames,dataGrid.pageNo);
+						
+					}else if(dataGrid.wsw.flag == "false"){
+						dataGrid.wssRemote.queryOwnHistoryWireSheet(createTimeFrom,createTimeTo,cabinetId,targetCabinetId,
+							operation,creatorNames,dataGrid.pageNo);
+					}
+				}
+			}
+			
+			/**
+			 * 获取查询条件的值
+			 * */
+			private function getQueryValue():void{
+				createTimeFrom = null;
+				createTimeTo = null;
+				cabinetId = null;
+				targetCabinetId = null;
+				operation = null;
+				creatorNames = null;
+				if(createTimeFroms.text != ""){
+					createTimeFrom = DateField.stringToDate(createTimeFroms.text,"YYYY-MM-DD");
+					createTimeFrom.hours = 0;
+					createTimeFrom.minutes = 00;
+					createTimeFrom.seconds = 00;
+				}
+				if(createTimeTos.text != ""){
+					createTimeTo = DateField.stringToDate(createTimeTos.text,"YYYY-MM-DD");
+					createTimeTo.hours = 23;
+					createTimeTo.minutes = 59;
+					createTimeTo.seconds = 59;
+				}
+				
+				if (createTimeFroms.text != "" && createTimeTos.text != ""){
+					if (createTimeTo.time < createTimeFrom.time) {
+//						Alert.show("结束日期不得早于起始日期，请重新选择！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00138"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return;
+					}
+				}
+				
+				if(cabinet1Combox.selectedItem!=null){
+					cabinetId = cabinet1Combox.selectedItem.id;
+				}
+				if(cabinet2Combox.selectedItem!=null){
+					targetCabinetId = cabinet2Combox.selectedItem.id;
+				}
+				if(operationCombox.selectedItem!=null){
+					operation = operationCombox.selectedItem.key;
+				}
+				if(creatorNameComBox.selectedItem!=null){
+					creatorNames = creatorNameComBox.selectedItem.toString(); 
+				}
+			}
+			/**
+			 * 查询全部的配线单
+			 * */
+			private function clear():void{
+				if(dataGrid.currentState == "init"){	
+					clearAll();
+				}else if(dataGrid.currentState == "history"){
+					clearAll();
+				}
+			}
+			
+			private function clearAll():void{
+				createTimeFroms.text = "";
+				createTimeTos.text = "";
+				buildCombox.selectedIndex = -1;
+				cabinet1Combox.selectedIndex = -1;
+				cabinet2Combox.selectedIndex = -1;
+				operationCombox.selectedIndex = -1;
+				creatorNameComBox.selectedIndex = -1;
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				if(dataGrid.alertShow == 0){
+					dataGrid.alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						dataGrid.alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:states>
+		<s:State name="init"/>
+		<s:State name="history"/>
+	</s:states>
+
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace gokei "widgets.WiringSheet.*";
+		.myStyle{
+			textAlign:right;
+			verticalAlign:middle;
+			fontWeight:bold;
+		}
+	</fx:Style>
+	<s:Rect width="100%" height="25" radiusX="5" radiusY="5">
+		<s:stroke>
+			<s:SolidColorStroke color="#696969" weight="2"/>
+		</s:stroke>
+	</s:Rect>
+	
+	<s:Label id="totalLabel" width="100%" height="25" textAlign="center" verticalAlign="middle"/>
+	<s:Rect y="30" width="100%" height="65" radiusX="5" radiusY="5">
+		<s:stroke>
+			<s:SolidColorStroke color="#696969" weight="2"/>
+		</s:stroke>
+		
+	</s:Rect>
+	
+	<s:HGroup width="100%" y="35">
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00318')}" styleName="myStyle" height="100%" width="100"/>
+		<mx:DateField id="createTimeFroms" width="100" height="25" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00319')}" styleName="myStyle" height="100%" width="100"/>
+		<mx:DateField id="createTimeTos" width="100" height="25" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00175')}" styleName="myStyle" height="100%" width="100"/>
+		<gokei:FilterComBox id="buildCombox" width="100" labelField="name" change="getCabinet(event)"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00320')}" styleName="myStyle" height="100%" width="100"/>
+		<gokei:FilterComBox id="cabinet1Combox" width="100" labelField="code"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00321')}" styleName="myStyle" height="100%" width="100"/>
+		<gokei:FilterComBox id="cabinet2Combox" width="100" labelField="code"/>
+		
+	</s:HGroup>	
+	
+		
+	<s:HGroup width="100%" y="65">
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00322')}" styleName="myStyle" height="100%" width="100"/>
+		<gokei:FilterComBox id="operationCombox" width="100" dataProvider="{operateNameArr}" labelField="name"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00323')}" styleName="myStyle" height="100%" width="100"/>
+		<gokei:FilterComBox id="creatorNameComBox" width="100"/>
+		
+		<s:Label styleName="myStyle" height="100%" width="480"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00042')}" click="queryWireSheets()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00043')}" click="clear()"/>
+		
+	</s:HGroup>
+		
+	
+</s:Group>

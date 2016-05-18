@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:GridItemRenderer xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					xmlns:s="library://ns.adobe.com/flex/spark" 
+					xmlns:mx="library://ns.adobe.com/flex/mx" clipAndEnableScrolling="true">
+	
+	<fx:Script>
+		<![CDATA[
+			
+			[Embed(source="assets/images/i_delete1.png")] 
+			[Bindable]
+			public var buttonIcon:Class;
+			
+			override public function prepare(hasBeenRecycled:Boolean):void {
+				if (!data)return;
+				if (data.isSysAssets == 1) {
+					deleteButton.visible = false;
+				} else {
+					deleteButton.visible = true;
+				}
+			}
+			
+			private function itemDelete():void {
+				dispatchEvent(new ProductGridEvent(ProductGridEvent.ITEM_DEL,data));
+			}
+		]]>
+	</fx:Script>
+	<s:states>
+		<mx:State name="normal"/>
+		<mx:State name="hovered"/>
+		<mx:State name="selected"/>
+	</s:states>
+	<s:Rect  left="0" top="0" bottom="0" right="0">
+		<s:fill>
+			<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+		</s:fill>
+	</s:Rect>
+	<mx:LinkButton id="deleteButton" x="5" y="5" width="30" height="30" click="itemDelete()" icon="{buttonIcon}"/>
+</s:GridItemRenderer>

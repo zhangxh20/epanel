@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:s="library://ns.adobe.com/flex/spark"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 initialize="init()"
+		 xmlns:graphic="com.gokei.components.cabinetManager.*">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.resources.ResourceManager;
+			
+			import spark.components.Image;
+			import spark.components.Label;
+			import spark.components.TextInput;
+			
+			private var _eqmtId:int;
+			
+			private var _type:int;
+			
+			private var _uNo:int;
+			
+			private var _uHoldCount:int;
+			
+			private var _portCount:int;
+			
+			private var _portList:ArrayCollection;
+			
+			public var shelfType:int;
+			
+			private var _portViewList:Object = new Object();
+			// 箭头
+			private var arrow:Image;
+			
+			private function init():void{
+				arrow = new Image();
+				arrow.source = "assets/images/arrow.png";
+				arrow.x = 768;
+				addElement(arrow);
+				arrow.visible = false;
+			}
+
+			public function get portList():ArrayCollection
+			{
+				return _portList;
+			}
+
+			public function set portList(value:ArrayCollection):void
+			{
+				_portList = value;
+				showPort();
+			}
+
+			public function get portCount():int
+			{
+				return _portCount;
+			}
+
+			public function set portCount(value:int):void
+			{
+				_portCount = value;
+				
+			}
+
+			public function get uHoldCount():int
+			{
+				return _uHoldCount;
+			}
+
+			public function set uHoldCount(value:int):void
+			{
+				_uHoldCount = value;
+			}
+
+			public function get uNo():int
+			{
+				return _uNo;
+			}
+
+			public function set uNo(value:int):void
+			{
+				_uNo = value;
+			}
+
+			public function get type():int
+			{
+				return _type;
+			}
+
+			public function set type(value:int):void
+			{
+				_type = value;
+			}
+
+			public function get eqmtId():int
+			{
+				return _eqmtId;
+			}
+
+			public function set eqmtId(value:int):void
+			{
+				_eqmtId = value;
+			}
+			
+			private function showPort():void{
+				// ---------------- 每一行有几列 ----------------
+				//每一行固定为8列，多余的向下展开
+				var rowNum : int = 8 ;
+				//如果此设备为多U，从头开始铺，铺不到的地方为空白，放不下有下拉列表
+				//每个端口的宽度
+				var rowWidth : int = (704 - rowNum)/ rowNum ;
+				//每个端口的高度（固定一个大小）
+				var rowHeight : Number = 59 / 3;
+				//总共多少行
+				var totalRow : int = portCount / rowNum ; //例如 总共4行
+				var portObj:Object;
+				var portD:PortDrawer;
+				var pcounter:int = 0;
+				var portD_Y : int = 17;
+				for (var i : int = 0 ; i < portCount ; i ++){
+					//初始化每个端口
+					portObj = _portList.getItemAt(pcounter);
+					pcounter++;
+					portD = new PortDrawer();
+					portD.width = rowWidth;
+					portD.height = rowHeight;
+					portD.portNumber = pcounter.toString();
+					//显示端口编号
+					_portViewList[portObj.code] = portD;
+					portD.linetype = portObj.lineType;
+					portD.labelStr = portObj.showCode;
+					portD.code = portObj.code;
+					portD.infoCode = portObj.showCode;
+					portD.parentType = portObj.parentType;
+					if(portObj.available == 1){
+						//可用
+						portD.available = true;
+						if(portObj.wsState == 0){
+							//配线单
+							portD.status = 3;
+						}else if(portObj.wsState < 5){
+							portD.status = 2;
+						} else {
+							if (portObj.inCable == 1) {
+								portD.status = 1;
+							} else {
+								portD.status = 0;
+							}
+						}
+					}else{
+						portD.available = false;
+					}
+					portGroup.addElement(portD);
+					portD.addEventListener(GridCabinetEvent.PORT_CLICK,portClick);
+					if( i % 8 == 0){
+						//换行
+						portD_Y = 17 + rowHeight * (i / 8);
+					}
+					portD.x = 32 + (i % 8) * (rowWidth + 1);
+					portD.y = portD_Y ;
+				}
+			}
+			
+			
+			private function getColumn():TextInput{
+				var column : TextInput = new TextInput();
+				column.setStyle('fontSize',10);
+				column.setStyle("textAlign","center");
+				column.setStyle('contentBackgroundColor', 0x454545);
+				column.setStyle('borderColor',0x000000);
+				column.setStyle('paddingTop',3);
+				column.setStyle('color','white');
+				column.editable = false;
+				column.height = 15;
+				column.y = 2;
+				return column;
+			}
+			/**
+			 * 配线架的基本属性
+			 * */
+			public function showEqmtTitle(brand : String,name:String,model:String):void{
+				//品牌 名称 型号
+				var column:TextInput = getColumn();
+//				column.text = "品牌";
+				column.text = ResourceManager.getInstance().getString("ViewerStrings","C00001");
+				column.width = 80;
+				column.x = 32 ;
+				portGroup.addElement(column);
+				
+				column = getColumn();
+				column.text = brand;
+				column.width = 154;
+				column.x = 112 ;
+				portGroup.addElement(column);
+				
+				column = getColumn();
+//				column.text = '名称';
+				column.text = ResourceManager.getInstance().getString("ViewerStrings","C00002");
+				column.width = 80;
+				column.x = 266 ;
+				portGroup.addElement(column);
+				
+				column = getColumn();
+				column.text = name;
+				column.width = 154;
+				column.x = 346 ;
+				portGroup.addElement(column);
+				
+				column = getColumn();
+//				column.text = '型号';
+				column.text = ResourceManager.getInstance().getString("ViewerStrings","C00003");
+				column.width = 80;
+				column.x = 500 ;
+				portGroup.addElement(column);
+				
+				column = getColumn();
+				column.text = model;
+				column.width = 154;
+				column.x = 580 ;
+				portGroup.addElement(column);
+			}
+			
+			/**
+			 * 点击端口，冒泡
+			 */ 
+			private function portClick(event:GridCabinetEvent):void{
+				var evt:GridCabinetEvent = new GridCabinetEvent(GridCabinetEvent.PORT_CLICK);
+				evt.portDraw = event.portDraw;
+				evt.equipment = this;
+				dispatchEvent(evt);
+			}
+			
+			/**
+			 * 通过端口序号，查找端口
+			 */ 
+			public function getPortViewByCode(code:String):PortDrawer {
+				return _portViewList[code];
+			}
+			
+			/**
+			 * 显示箭头
+			 */
+			public function showArrow(type:int = 0):Image {
+				if (type == 1) {
+					arrow.source = "assets/images/arrow.png";
+				} else {
+					arrow.source = "assets/images/arrow2.png"
+				}
+				arrow.visible = true;
+				return arrow;
+			}
+			
+			/**
+			 * 隐藏箭头
+			 */
+			public function hiddeArrow():void {
+				arrow.visible = false;
+			}
+		]]>
+	</fx:Script>
+
+	<s:Rect left="0" right="0" top="0" bottom="0">
+		<s:fill>
+			<s:SolidColor color="0xDADADA"/>
+		</s:fill>
+		
+	</s:Rect>
+	
+	<s:Rect left="26" right="26" top="0" bottom="0" bottomLeftRadiusX="3" bottomRightRadiusX="3"
+			topLeftRadiusX="3" topRightRadiusX="3">
+		<s:fill>
+			<s:SolidColor color="0x000000"/>
+		</s:fill>
+	</s:Rect>
+	<s:Rect left="30" right="30" top="2" bottom="2" bottomLeftRadiusX="0" bottomRightRadiusX="0"
+			topLeftRadiusX="3" topRightRadiusX="3">
+		<s:fill>
+			<s:SolidColor color="0xffffff"/>
+		</s:fill>
+	</s:Rect>
+	
+	<graphic:GridEquGraphicDraw width="{this.width}" height="{this.height}">
+		<graphic:fill>
+			<s:SolidColor alpha="1" color="0xffffff"/>
+		</graphic:fill>
+		
+	</graphic:GridEquGraphicDraw>
+	<s:Rect left="0" right="0" top="0" bottom="0">
+		<s:stroke>
+			<s:SolidColorStroke  color="black"/>
+		</s:stroke>
+		
+	</s:Rect>
+	<s:Scroller id="scroller" width="{this.width}" height="{this.height}" interactionMode="mouse">
+		<s:Group id="portGroup" width="100%" height="100%"/>
+	</s:Scroller>
+</s:Group>

@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<configuration>
+	<userGroups>
+		<userGroup id="1" name="admin"/>
+		<userGroup id="2" name="other"/>
+	</userGroups>
+</configuration>

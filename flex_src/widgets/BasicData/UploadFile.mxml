@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   xmlns:gokei="com.gokei.components.*" 
+			   width="460" height="180" title="{ResourceManager.getInstance().getString('ViewerStrings','T00026')}" close="closeHandler()" creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="fsRemote" destination="fileService" fault="onFault(event)">
+			<s:method name="uploadFile" result="uploadFileResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="asRemote" destination="areaService" fault="onFault(event)">
+			<s:method name="boundAreaWizCSVFile" result="boundAreaWizCSVFileResult(event)"/>
+			<s:method name="cancelBound"  result="cancelBoundResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.BasicData.area.AllArea;
+			
+			private var file:FileReference;
+			private var fileType:FileFilter;
+			private var fileArray:Array;
+			private var _areaId:int;
+			public var cTable:ComparisonTable = new ComparisonTable();
+			private var _allArea:AllArea;
+			
+			protected function init():void{
+				file = new FileReference();
+				fileType = new FileFilter("Excel","*.xlsx;*.xls;*.csv");
+				fileArray = new Array(fileType); 
+				file.addEventListener(Event.SELECT,onSelect);
+			}
+			public function set allArea(value:AllArea):void{
+				this._allArea = value;
+			}
+			private function onSelect(e:Event):void{
+				file.load();
+				fileName.text = file.name;
+				keyWord.text = file.name;
+				bind.enabled = true;
+				comparison.enabled = true;
+			}
+			
+			public function initText():void{
+				fileName.text = "";
+				keyWord.text = "";
+			}
+
+			protected function uploadFileResult(event:ResultEvent):void {
+				var flag:Boolean = event.result as Boolean;
+				if(flag){
+//					Alert.show("上传成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00046"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("上传失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00090"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			protected function closeHandler():void{
+				PopUpManager.removePopUp(this);
+				initText();
+			}
+			
+			public function set areaId(value:int):void{
+				this._areaId = value;
+				initText();
+			}
+			
+			protected function comparison_clickHandler():void{
+				cTable.fileDate = file.data;
+				cTable.areaId = _areaId;
+				PopUpManager.addPopUp(cTable,this,true);
+				cTable.x = this.x;
+				cTable.y = this.y - 100;
+				cTable.init();
+			}
+			/**
+			 * 先上传文件 在绑定
+			 * */
+			protected function bind_clickHandler():void{
+				if(bind.label == ResourceManager.getInstance().getString("ViewerStrings","T00027")){
+					asRemote.boundAreaWizCSVFile(file.data,fileName.text,keyWord.text,_areaId);
+				}else{
+//					Alert.show("您确定要解除绑定吗?",
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00047"),
+						ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+						Alert.YES|Alert.NO,
+						null,
+						function(event:CloseEvent):void{
+							//解除绑定
+							if(event.detail == Alert.YES){
+								asRemote.cancelBound(_areaId);
+							}
+						});
+				}
+			}
+			
+			/**
+			 * 点击绑定
+			 * */
+			public function bindState(value:int):void{
+				if(value == -1){
+					//绑定
+					browse.enabled = true;
+//					bind.label = "绑定";
+					bind.label = ResourceManager.getInstance().getString("ViewerStrings","T00027");
+					comparison.enabled = false;
+					bind.enabled = false;
+				}else{
+					//解除
+					browse.enabled = false;
+//					bind.label = "解除";
+					bind.label = ResourceManager.getInstance().getString("ViewerStrings","T00028");
+					comparison.enabled = true;
+					bind.enabled = true;
+				}
+			}
+			
+			protected function boundAreaWizCSVFileResult(event:ResultEvent):void{
+				var flag:Boolean = event.result as Boolean;
+				if(flag){
+//					Alert.show("绑定成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00048"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					//刷新表格
+					_allArea.init();
+					bindState(0);
+				}else{
+//					Alert.show("绑定失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00091"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			protected function cancelBoundResult(event:ResultEvent):void{
+				var flag:Boolean = event.result as Boolean;
+				if(flag){
+//					Alert.show("解除绑定成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00049"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					//刷新表格
+					_allArea.init();
+					bindState(-1);
+					initText();
+				}else{
+//					Alert.show("解除绑定失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00092"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:Group left="10" right="10" top="10" bottom="10" width="100%" height="100%">
+		<s:Form x="40">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00029')}" height="25">
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:TextInput id="fileName" width="180" enabled="false"/>
+				<s:Button id="browse" label="{ResourceManager.getInstance().getString('ViewerStrings','T00030')}" click="file.browse(fileArray);"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00031')}" height="25">
+				<s:layout>
+					<s:HorizontalLayout/>
+				</s:layout>
+				<s:TextInput id="keyWord" width="180"/>
+			</s:FormItem>
+		</s:Form>
+		
+		<s:FormItem x="80" y="80">
+			<s:layout>
+				<s:HorizontalLayout/>
+			</s:layout>
+			<s:Button id="comparison" label="{ResourceManager.getInstance().getString('ViewerStrings','T00032')}" click="comparison_clickHandler()"/>
+			<s:Button id="bind" click="bind_clickHandler()"/>
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="closeHandler()"/>
+		</s:FormItem>
+	</s:Group>
+</gokei:TitleWindowX>

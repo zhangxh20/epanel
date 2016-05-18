@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009" 
+						 xmlns:s="library://ns.adobe.com/flex/spark" 
+						 xmlns:mx="library://ns.adobe.com/flex/mx"
+						 xmlns:gokei="com.gokei.components.*"  title="{ResourceManager.getInstance().getString('ViewerStrings','T00162')}"
+						 width="400" height="300" close="PopUpManager.removePopUp(this)">
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import mx.collections.ArrayCollection;
+			import mx.managers.PopUpManager;
+			import mx.resources.ResourceManager;
+			
+			public var productBuild:ProductBuildForm;
+			[Bindable]
+			private var dataList:ArrayCollection;
+			
+			public function init(shelfList:ArrayCollection):void {
+				dataList = shelfList;
+			}
+			
+			private function labFunc(item:Object):String {
+				var str:String = "";
+//				str += "名称:" + item.name + ",设备编号:" + item.code + ",所在U层:" + item.uNo;
+				str += ResourceManager.getInstance().getString("ViewerStrings","T00134") + item.name + "," + ResourceManager.getInstance().getString("ViewerStrings","T00163") + item.code + ResourceManager.getInstance().getString("ViewerStrings","T00164") + item.uNo;
+				return str;
+			}
+			
+			private function shelfSelect():void {
+				productBuild.shelfSelectClose(list.selectedItem);
+				PopUpManager.removePopUp(this);
+			}
+		]]>
+	</fx:Script>
+	<s:List id="list" labelFunction="labFunc" dataProvider="{dataList}" width="100%" height="100%" doubleClickEnabled="true" doubleClick="shelfSelect()">
+		
+	</s:List>
+</gokei:TitleWindowX>

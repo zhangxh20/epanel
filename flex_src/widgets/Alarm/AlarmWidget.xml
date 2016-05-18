@@ -1,0 +1,7 @@
+<?xml version="1.0" ?>
+<configuration>
+	<buttons>
+		<button id="24" name="AlarmExport"/>
+		<button id="25" name="HistoryExport"/>
+	</buttons>
+</configuration>

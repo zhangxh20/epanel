@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx" 
+		 xmlns:gokei="widgets.Tree.*"
+		 xmlns:comp="com.gokei.components.*"
+		 width="100%" height="100%">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="getSystemGraphDataByCompanyId" result="loadTree(event)" />
+			<s:method name="getChildXMLByCabinetId" result="getChildXMLByCabinetIdResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="cabRemote" destination="cabinetService" fault="onFault(event)">
+			<s:method name="assignWarnLightCollector" result="assignWarnLightCollectorResult(event)"/>
+		</s:RemoteObject>
+		<fx:XML id="myMenuData1">
+			<root>
+				<menuitem label="链接到机柜展示图"/>
+			</root>
+		</fx:XML>
+		<fx:XML id="myMenuData2" format="e4x">
+			<root>
+				<menuitem label="链接到机柜展示图"/>
+				<menuitem label="输出告警灯" icon="lampIcon"/>
+			</root>
+		</fx:XML>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.controls.Menu;
+			import mx.events.CloseEvent;
+			import mx.events.ListEvent;
+			import mx.events.MenuEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+		
+			[Bindable]
+			private var xmlList:XMLList;
+			[Bindable]
+			public var companyId:int;
+			private var point1:Point = new Point();
+			private var myMenu:Menu;
+			public var xml:XML; //树
+			private var selectedXml:XML ; //当前被选中的对象
+			private var strXml : String; // 点击Menu 传来的xml
+			//删除之后 显示上一步的操作 并展开
+			public var eqmtId:int = -1; //机柜ID
+			public var buildingId:int = -1; //建筑ID
+			public var buildingCode:String = "";//建筑编号
+			[Bindable]
+			[Embed(source="assets/images/alarm.png")]
+			public var lampIcon:Class;
+			
+			public function init(companyId:int):void {
+				remote.getSystemGraphDataByCompanyId(companyId);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			private function refresh(event:AppEvent):void{
+				var arr:Array = event.data.arr as Array;
+				var data : Object = event.data.obj as Object;
+				if(data){
+					buildingId = data.buildingId;
+					eqmtId = data.cabinetId;
+				}
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[6] == item){
+						remote.getSystemGraphDataByCompanyId(companyId);
+						loading.visible = true;
+						break ;
+					}
+				}
+			}
+			
+			private function loadTree(event:ResultEvent):void {
+				loading.visible = false;
+				var xmlStr:String = event.result as String;
+				xml = new XML(xmlStr);
+				xmlList = new XMLList(xml);
+				trace(xml);
+				tree.callLater(function():void{
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+					//遍历XML 如果eqmtID不在此XML中 这是删除操作，展开相应的节点
+					var newXml : XMLList = xmlList[0].company[0].building;
+					if(eqmtId == -1)return;
+					var bool:Boolean = false;
+					for each (var item : XML in newXml){
+						if(buildingId == item.@ID || buildingCode == item.@code){
+							tree.expandItem(item,true);
+							for each (var item1 : XML in item.children()){
+								if(eqmtId == item1.@ID){
+									tree.expandItem(item1,true);
+									break;
+								}
+							}
+						}
+					}
+					eqmtId = -1;
+					buildingId = -1;
+				});
+			}
+		
+			private function iconfunc(item:Object):Class {
+				return CommonUtil.iconfunc(item);
+			}
+			
+			private function labelfunc(item:Object):String {
+				return CommonUtil.labelfunc(item,'net');
+			}
+			
+			protected function treeClick(event:ListEvent):void{
+				if(tree.selectedItem == null) return;
+				selectedXml = tree.selectedItem as XML;
+				if(selectedXml.@type == 'company' || selectedXml.@type == 'building'){
+					
+				}else{
+					if(selectedXml.@type == 'collector'){
+						myMenu = Menu.createMenu(tree, myMenuData2, false);
+						if(selectedXml.@warnLight == 1){
+							myMenu.iconField="@icon";
+						}
+						eqmtId = selectedXml.parent().@ID;
+						buildingId = selectedXml.parent().parent().@ID;
+					}else{
+						myMenu = Menu.createMenu(tree, myMenuData1, false);
+					}
+					myMenu.addEventListener(MenuEvent.ITEM_CLICK, menuClick);
+					myMenu.labelField = "@label";
+					point1.x = mouseX - 110;
+					point1.y = mouseY - 8;
+					point1 = tree.localToGlobal(point1);
+					myMenu.show(point1.x + 100, point1.y + 25);
+				}
+				if(selectedXml.@type == "company" || selectedXml.@type == "building" || selectedXml.@type == "controller"){
+					config.enabled = false;
+					config.alpha = 0.2;
+				}else{
+					config.enabled = true;
+					config.alpha = 1.0;
+				}
+				configCabel.enabled = false;
+				configCabel.alpha = 0.2 ;
+				if(selectedXml.@type == 'shelf'){
+					if(selectedXml.@typeX == 0 || selectedXml.@typeX == 2){
+						//主干  交换机 能够进行静态配线
+						configCabel.enabled = true;
+						configCabel.alpha = 1.0;
+					}
+				}
+				if(selectedXml.@type == 'netEquipment'){
+					configCabel.enabled = true;
+					configCabel.alpha = 1.0;
+				}
+				
+			}
+			
+			private function menuClick(event : MenuEvent):void{
+				if(event.index == 0){
+					AppEvent.dispatch(EventType.BASEMAP_CHANGE, 3);
+					if(selectedXml.@type == 'cabinet'){
+						AppEvent.dispatch(EventType.CABINET_SHOW,selectedXml.@ID);
+					}else{
+						var obj : Object = new Object();
+						obj.cabinetId = selectedXml.parent().@ID;
+						obj.uNo = selectedXml.@uNo;
+						obj.type = "show";
+						AppEvent.dispatch(EventType.BUILD_SUCC_CABSHOW,obj);
+					}
+				}else{
+					cabRemote.assignWarnLightCollector(int(selectedXml.@ID));
+				}
+			}
+			
+			public function expand(xml:XML):void {
+				if (xml == null) return;
+				tree.expandItem(xml,false);
+				for (var i:int = 0; i < xml.children().length(); i++) {
+					var child:XML = xml.children()[i];
+					expand(child);
+				}
+			}
+			
+			protected function getChildXMLByCabinetIdResult(event:ResultEvent):void{
+				strXml = event.result as String;
+				var obj:XMLList = new XMLList(strXml);
+				var item:XML;
+				for each(item in obj) {
+					selectedXml.prependChild(item);
+				}
+				expand(tree.selectedItem as XML);
+			}
+			
+			protected function configEqmt(index : int):void{
+				//发送到设备配置
+				var obj:Object = new Object();
+				if(selectedXml.@type == "shelf"){
+					if(selectedXml.@typeId == 'GLZNJ' || selectedXml.@typeId == 'TLZNJ'){
+						obj.type = "smartShelf";
+					}else{
+						obj.type = selectedXml.@type + "";
+					}
+				}else{
+					obj.type = selectedXml.@type + "";
+				}
+				obj.id = int(selectedXml.@ID);
+				obj.isBound = selectedXml.@isBound;
+				obj.index = index;
+				obj.cabinetId = selectedXml.@cabinetId;
+				AppEvent.dispatch(AppEvent.WIDGET_RUN,7);
+				setTimeout(function():void{
+					AppEvent.dispatch(EventType.CONFIG_SEND,obj);
+				},800);
+				//记录下 当前选中父对象的设备类型 ，设备ID
+				if(selectedXml.@type == 'cabinet'){
+					eqmtId = selectedXml.@ID;
+					buildingId = selectedXml.parent().@ID;
+				}else{
+					eqmtId = selectedXml.parent().@ID;
+					buildingId = selectedXml.parent().parent().@ID;
+				}
+				config.enabled = false;
+				config.alpha = 0.2;
+				configCabel.enabled = false;
+				configCabel.alpha = 0.2;
+			}
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			private function assignWarnLightCollectorResult(event:ResultEvent):void{
+				var flag : Boolean = event.result as Boolean;
+				if(flag){
+//					Alert.show("指定告警灯成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00116"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					var data : Object = { arr : [EventType.REFRESH_ID[6]]};
+					AppEvent.dispatch(EventType.REFRESH,data);
+				}else{
+//					Alert.show("指定告警灯失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00077"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:VGroup width="100%" height="100%">
+		<gokei:AutoSizeTree id="tree" dataProvider="{xmlList}" width="100%" height="96%" 
+							showRoot="false" iconFunction="iconfunc" labelFunction="labelfunc"
+							horizontalScrollPolicy="auto" itemClick="treeClick(event)">
+		</gokei:AutoSizeTree>
+		<s:HGroup width="100%" height="4%" horizontalAlign="right" verticalAlign="middle">
+			<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00252')}">
+				<s:Button id="config" enabled="false" icon="{TreeImageList.eqmtConfigIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2" click="configEqmt(0)"/>
+			</s:HGroup>
+			<s:HGroup width="33.5" height="33.5" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00074')}">
+				<s:Button id="configCabel" enabled="false" icon="{TreeImageList.configCabelIcon}" chromeColor="0xfffff0" buttonMode="true" width="33.5" height="33.5" alpha="0.2" click="configEqmt(1)"/>
+			</s:HGroup>
+		</s:HGroup>
+	</s:VGroup>
+	<comp:Loading id="loading" type="1" x="{(width - loading.width)/2}" y="{(height - loading.height)/2}" />
+</s:Group>

@@ -1,0 +1,288 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 creationComplete="init()">
+	<fx:Declarations>
+		<s:RemoteObject id="asRemote" destination="areaService" fault="onFault(event)">
+			<s:method name="deleteAreaById" result="deleteAreaByIdResult(event)"/>
+			<s:method name="getAllAreasByBuildingId" result="getAllAreasByBuildingIdResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.managers.SwitchManager;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.BasicData.UploadFile;
+			import widgets.BasicData.building.BuildingViewStack;
+			[Bindable]
+			private var allArea:ArrayCollection;
+			public var uploadFile:UploadFile = new UploadFile();
+			
+			public var buildingViewStack :BuildingViewStack;
+			[Embed(source="assets/images/i_edit.png")] 
+			[Bindable]
+			public var editIcon:Class;
+			[Embed(source="assets/images/i_delete.png")] 
+			[Bindable]
+			public var delIcon:Class;
+			
+			[Embed(source="assets/images/i_bind.png")] 
+			[Bindable]
+			public var bindIcon:Class;
+			
+			[Embed(source="assets/images/i_bindX.png")] 
+			[Bindable]
+			public var enBindIcon:Class;
+			private var buildId:int;
+			
+			/**
+			 * 返回
+			 * */
+			protected function back():void{
+				buildingViewStack.selectedChild = buildingViewStack.nav1;
+				dataGrid.dataProvider = null;
+			}
+			/**
+			 * 添加楼层界面
+			 * */
+			protected function addArea():void{
+				buildingViewStack.selectedChild = buildingViewStack.nav3;
+				setTimeout(function():void{
+					buildingViewStack.addArea.currentState = 'add';
+//					buildingViewStack.addArea.label.text = "楼层列表 >> 新增楼层";
+					buildingViewStack.addArea.label.text = ResourceManager.getInstance().getString("ViewerStrings","T00045");
+				},500);
+			}
+			
+			protected function deleteAreaByIdResult(event:ResultEvent):void {
+				var i:int = event.result as int;
+				if(i == 1){
+					init();
+					var data : Object = {
+						arr : [EventType.REFRESH_ID[1],EventType.REFRESH_ID[9],EventType.REFRESH_ID[12] ],
+						obj : {buildingId : buildId}
+					};
+					AppEvent.dispatch(EventType.REFRESH,data);
+//					Alert.show("删除成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00054"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("删除失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00020"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			private function getAllAreasByBuildingIdResult(event:ResultEvent):void {
+				allArea = event.result as ArrayCollection;
+			}
+			public function init():void{
+				buildId = HashTableManager.instance.get("browseBuildId") as int;
+				asRemote.getAllAreasByBuildingId(buildId);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event : AppEvent):void{
+				var arr : Array = event.data.arr as Array;
+				for each(var item : String in arr){
+					if (item == EventType.REFRESH_ID[21]){
+						column1.width = 185;
+						column2.width = column3.width = 100;
+						column4.width = 130;
+						column5.width = column6.width = 80;
+						break;
+					}
+				}
+			}
+			
+			private function getLayerNo(item:Object,grid:GridColumn):String{
+				if(item.layerNo == -1){
+					return "";
+				}
+				return item.layerNo;
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:Group left="10" right="10" bottom="10">
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00046')}" color="yellow"/>
+		<s:DataGrid id="dataGrid" y="15" width="100%" height="210" dataProvider="{allArea}">
+			<s:columns>
+				<s:ArrayCollection>
+					<s:GridColumn id="column1" dataField="name" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00047')}" width="185" minWidth="100"/>
+					<s:GridColumn id="column2" dataField="code" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00048')}" width="100" minWidth="60"/>
+					<s:GridColumn id="column3" dataField="layerNo" labelFunction="getLayerNo" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00042')}" width="100" minWidth="60"/>
+					<s:GridColumn id="column4" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00049')}" width="130" minWidth="60">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton id="button" x="30" y="3" width="50" click="onClickUpload()" />
+									<fx:Script>
+										<![CDATA[
+											import mx.events.CloseEvent;
+											import mx.managers.PopUpManager;
+											import mx.resources.ResourceManager;
+											
+											private var layerNo:int;
+											
+											protected function onClickUpload():void{
+												PopUpManager.addPopUp(outerDocument.uploadFile,this,false);
+												outerDocument.uploadFile.x = button.x + 500;
+												outerDocument.uploadFile.y = button.y + 300;
+												outerDocument.uploadFile.areaId = outerDocument.dataGrid.selectedItem.id;
+												outerDocument.uploadFile.allArea = outerDocument;
+												if(layerNo == -1){
+													//绑定
+													outerDocument.uploadFile.bindState(-1);
+												}else{
+													//解除
+													outerDocument.uploadFile.bindState(0);
+												}
+											}
+											override public function set data(value:Object):void {
+												super.data = value;
+												if(value){
+													layerNo = value.layerNo;
+													if(value.layerNo==-1){
+														//绑定
+														button.setStyle("icon",outerDocument.bindIcon);
+													}else{
+														button.setStyle("icon",outerDocument.enBindIcon);
+													}
+												}
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+					<s:GridColumn id="column5" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00050')}" width="80" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton width="48" x="15" y="2" click="editArea()" icon="{outerDocument.editIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import com.gokei.managers.HashTableManager;
+											import mx.resources.ResourceManager;
+											private function editArea():void{
+												var areaId:int = outerDocument.dataGrid.selectedItem.id;
+												outerDocument.buildingViewStack.selectedChild = outerDocument.buildingViewStack.nav3;
+												setTimeout(function():void{
+													outerDocument.buildingViewStack.addArea.currentState = 'edit';
+													outerDocument.buildingViewStack.addArea.label.text = ResourceManager.getInstance().getString("ViewerStrings","T00051");
+													outerDocument.buildingViewStack.addArea.getAreaById(areaId);
+												},500);
+												HashTableManager.instance.put("areaId",areaId);
+											}
+											
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+					<s:GridColumn id="column6" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00052')}" width="80" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton width="48" x="15" y="2" click="delArea()" icon="{outerDocument.delIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import mx.controls.Alert;
+											import mx.events.CloseEvent;
+											import mx.managers.PopUpManager;
+											import mx.resources.ResourceManager;
+											
+											private function delArea():void{
+//												Alert.show("您确定要删除吗?",
+//													"提示",
+												Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+													Alert.YES|Alert.NO,
+													null,
+													judgeDel);
+											}
+											private function judgeDel(event:CloseEvent):void{
+												if(event.detail == Alert.YES){
+													var areaId:int = outerDocument.dataGrid.selectedItem.id;
+													outerDocument.asRemote.deleteAreaById(areaId);
+												}
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+				</s:ArrayCollection>
+			</s:columns>
+		</s:DataGrid>
+		<s:HGroup x="520" y="230" >
+			<s:Button label="返回" click="back()"/>
+			<s:Button label="新增楼层" click="addArea()"/>
+		</s:HGroup>
+	</s:Group>
+</s:Group>

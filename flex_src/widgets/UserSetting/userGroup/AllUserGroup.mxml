@@ -1,0 +1,264 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 creationComplete="init()">
+	
+	<fx:Declarations >
+		<s:RemoteObject id="rsRemote" destination="roleService" fault="onFault(event)">
+			<s:method name="getAllRoles" result="getAllRolesResult(event)"/>
+			<s:method name="deleteRoleById" result="deleteRoleByIdResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			public var ugViewStack:UserGroupViewStack;
+			[Bindable]
+			public var allRoles:ArrayCollection;
+			[Embed(source="assets/images/GeoprocessingTool16.png")] 
+			[Bindable]
+			public var editIcon:Class;
+			[Embed(source="assets/images/edit_cancel.png")] 
+			[Bindable]
+			public var delIcon:Class;
+			[Embed(source="assets/images/i_auth.png")] 
+			[Bindable]
+			public var addIcon:Class;
+			
+			public function init():void{
+				rsRemote.getAllRoles();
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event : AppEvent):void{
+				var arr : Array = event.data.arr as Array;
+				for each(var item : String  in arr){
+					if (EventType.REFRESH_ID[18] == item){
+						//初始化表格大小
+						column1.width = 145;
+						column2.width = 270;
+						column3.width = column4.width = column5.width = 60;
+						break;
+					}
+				}
+			}
+			
+			private function getAllRolesResult(event:ResultEvent):void{
+				allRoles = event.result as ArrayCollection;
+				if(allRoles == null){
+					allRoles = new ArrayCollection([]);
+				}
+			}
+			
+			private function addUserGroup():void{
+				ugViewStack.selectedChild = ugViewStack.nav2;
+				setTimeout(function():void{
+					ugViewStack.addUserGroup.currentState = 'add';
+//					ugViewStack.addUserGroup.label.text = '用户组列表 >> 新增用户组';
+					ugViewStack.addUserGroup.label.text = ResourceManager.getInstance().getString("ViewerStrings","T00294");
+				},500);
+			}
+			
+			private function deleteRoleByIdResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == 1){
+					init();
+//					Alert.show("删除成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00054"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					var obj : Object = { arr : [EventType.REFRESH_ID[15],EventType.REFRESH_ID[19]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+				}else{
+//					Alert.show("删除失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00020"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00295')}" color="yellow" x="10"/>
+	<s:Group left="10" right="10" bottom="10" top="15">
+		<s:DataGrid id="dataGrid" width="100%" height="215" dataProvider="{allRoles}">
+			<s:columns>
+				<s:ArrayCollection>
+					<s:GridColumn id="column1" dataField="name" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00293')}" minWidth="60" />
+					<s:GridColumn id="column2" dataField="remark" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" minWidth="200" />
+					<s:GridColumn id="column3" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00050')}" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton id="editBtn" x="4" y="2" click="editUserGroup()" icon="{outerDocument.editIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import com.gokei.managers.HashTableManager;
+											import mx.resources.ResourceManager;
+											public function editUserGroup():void{
+												var userGroupId:int = outerDocument.dataGrid.selectedItem.id;
+												outerDocument.ugViewStack.selectedChild = outerDocument.ugViewStack.nav2;
+												setTimeout(function():void{
+													outerDocument.ugViewStack.addUserGroup.currentState = 'edit';
+//													outerDocument.ugViewStack.addUserGroup.label.text = '用户组列表 >> 用户组编辑';
+													outerDocument.ugViewStack.addUserGroup.label.text = ResourceManager.getInstance().getString("ViewerStrings","T00296");
+													outerDocument.ugViewStack.addUserGroup.getUserGroupById(userGroupId);
+												},500);
+												HashTableManager.instance.put("userGroupId",userGroupId);
+											}
+											override public function prepare(hasBeenRecycled:Boolean):void {
+												if (data == null) {
+													return;
+												}
+												if (data.name == "admin"){
+													editBtn.visible = false;
+												} else {
+													editBtn.visible = true;
+												}
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+					<s:GridColumn id="column4" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00052')}" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton id="delBtn" width="50" x="4" y="2" click="delGroup()" icon="{outerDocument.delIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import mx.controls.Alert;
+											import mx.events.CloseEvent;
+											import mx.resources.ResourceManager;
+											private function delGroup():void{
+//												Alert.show("您确定要删除吗?",
+//													"提示",
+												Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00055"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),
+													Alert.YES|Alert.NO,
+													null,
+													judgeDel);
+											}
+											private function judgeDel(event:CloseEvent):void{
+												if(event.detail == Alert.YES){
+													var userGroupId:String = outerDocument.dataGrid.selectedItem.id;
+													outerDocument.rsRemote.deleteRoleById(userGroupId);
+												}
+											}
+											
+											override public function prepare(hasBeenRecycled:Boolean):void {
+												if (data == null) {
+													return;
+												}
+												if (data.name == "admin"){
+													delBtn.visible = false;
+												} else {
+													delBtn.visible = true;
+												}
+											}
+												
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+					<s:GridColumn id="column5" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00297')}" resizable="false">
+						<s:itemRenderer>
+							<fx:Component>
+								<s:GridItemRenderer>
+									<s:states>
+										<mx:State name="normal"/>
+										<mx:State name="hovered"/>
+										<mx:State name="selected"/>
+									</s:states>
+									<s:Rect  left="0" top="0" bottom="0" right="0">
+										<s:fill>
+											<s:SolidColor color.hovered="0x101010" color.selected="0x101010" color.normal="0x313131"/>
+										</s:fill>
+									</s:Rect>
+									<mx:LinkButton id="roleBtn" width="50" x="4" y="2" click="addRole()" icon="{outerDocument.addIcon}"/>
+									<fx:Script>
+										<![CDATA[
+											import com.gokei.managers.HashTableManager;
+											private function addRole():void{
+												var userGroupId:int = outerDocument.dataGrid.selectedItem.id;
+												outerDocument.ugViewStack.selectedChild = outerDocument.ugViewStack.nav3;
+												HashTableManager.instance.put("userGroupRoleId",userGroupId);
+												setTimeout(function():void{
+													outerDocument.ugViewStack.addRole.refresh();
+												},500);
+											}
+											
+											override public function prepare(hasBeenRecycled:Boolean):void {
+												if (data == null) {
+													return;
+												}
+												if (data.name == "admin"){
+													roleBtn.visible = false;
+												} else {
+													roleBtn.visible = true;
+												}
+											}
+										]]>
+									</fx:Script>
+								</s:GridItemRenderer>
+							</fx:Component>
+						</s:itemRenderer>
+					</s:GridColumn>
+				</s:ArrayCollection>
+			</s:columns>
+		</s:DataGrid>
+		<s:Button x="510" y="220" label="{ResourceManager.getInstance().getString('ViewerStrings','T00298')}" click="addUserGroup()"/>
+	</s:Group>
+</s:Group>

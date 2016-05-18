@@ -1,0 +1,386 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:gokei="widgets.WiringSheet.*" initialize="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="wssRemote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="getWorkSheetQueryListContents" result="getWorkSheetQueryListContentsResult(event)"/>
+			<s:method name="getOwnWorkSheetQueryListContents" result="getOwnWorkSheetQueryListContentsResult(event)"/>
+			<s:method name="getCabinetsByBuildingId" result="getCabinetsByBuildingIdResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="csRemote" destination="cabinetService" fault="onFault(event)">
+			<s:method name="getAllCabinets" result="getAllCabinetsResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.WorkSheet.WorkSheetWidget;
+			
+			public var groupIndex:int;
+			[Bindable]
+			public var wsw:WorkSheetWidget;
+			[Bindable]
+			private var historyState:ArrayCollection = new ArrayCollection([ //历史界面 状态的数据源
+//				{key:"1",name:"已生成"},
+//				{key:"2",name:"已发送"},
+//				{key:"3",name:"已受理"},
+//				{key:"4",name:"已执行"},
+//				{key:"5",name:"已完成"},
+//				{key:"6",name:"已取消"},
+				{key:"1",name:ResourceManager.getInstance().getString("ViewerStrings","T00343")},
+				{key:"2",name:ResourceManager.getInstance().getString("ViewerStrings","T00344")},
+				{key:"3",name:ResourceManager.getInstance().getString("ViewerStrings","T00345")},
+				{key:"4",name:ResourceManager.getInstance().getString("ViewerStrings","T00346")},
+				{key:"5",name:ResourceManager.getInstance().getString("ViewerStrings","T00347")},
+				{key:"6",name:ResourceManager.getInstance().getString("ViewerStrings","T00348")},
+			]);
+			[Bindable]
+			private var noCompletedState:ArrayCollection = new ArrayCollection([ //未完成界面 状态的数据源
+//				{key:"2",name:"已发送"},
+//				{key:"3",name:"已受理"},
+//				{key:"4",name:"已执行"}	
+				{key:"2",name:ResourceManager.getInstance().getString("ViewerStrings","T00344")},
+				{key:"3",name:ResourceManager.getInstance().getString("ViewerStrings","T00345")},
+				{key:"4",name:ResourceManager.getInstance().getString("ViewerStrings","T00346")}	
+			]);
+			[Bindable]
+			private var operation:ArrayCollection = new ArrayCollection([ //动作
+//				{key:"0",name:"添加跳线"},
+//				{key:"1",name:"删除跳线"},
+//				{key:"2",name:"变更跳线"},
+//				{key:"3",name:"换线"},
+				{key:"0",name:ResourceManager.getInstance().getString("ViewerStrings","T00314")},
+				{key:"1",name:ResourceManager.getInstance().getString("ViewerStrings","T00315")},
+				{key:"2",name:ResourceManager.getInstance().getString("ViewerStrings","T00316")},
+				{key:"3",name:ResourceManager.getInstance().getString("ViewerStrings","T00317")},
+			]);
+			[Bindable]
+			private var operatorNames:ArrayCollection;//现场人员列表
+			[Bindable]
+			private var creatorNames:ArrayCollection; //系统人员列表
+			[Bindable]
+			private var buildingList:ArrayCollection;//建筑列表	
+			[Bindable]
+			private var cabinetArr:ArrayCollection;//机柜列表	
+			
+			public var createTimeFrom:Date = null; //起始时间
+			public var createTimeTo:Date = null;//结束时间
+			public var cabinetId:String = null;	//机柜编号
+			public var targetCabinetId:String = null;//目标机柜编号
+			public var operationName:String = null;//动作
+			public var operatorName:String = null//现场人员
+			public var creatorName:String = null;//系统人员
+			public var state:String = null;//状态
+			
+			
+			public function init():void{
+				if(groupIndex == 0){
+					judgeRemote();
+					csRemote.getAllCabinets();
+					AppEvent.addListener(EventType.REFRESH,refresh);
+				}else if(groupIndex == 1){
+					csRemote.getAllCabinets();
+					judgeRemote();
+					AppEvent.addListener(EventType.REFRESH,refresh);
+				}else if(groupIndex == 2){
+					csRemote.getAllCabinets();
+					judgeRemote();
+					AppEvent.addListener(EventType.REFRESH,refresh);
+				}else if(groupIndex == 3){
+					csRemote.getAllCabinets();
+					judgeRemote();
+					AppEvent.addListener(EventType.REFRESH,refresh);
+				}
+			}
+			
+			private function refresh(event:AppEvent):void{
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[4] == item) {
+						csRemote.getAllCabinets();
+						judgeRemote();
+						break;
+					}
+				}
+			}
+			
+			private function judgeRemote():void{
+				if(wsw.flag == "true"){ 
+					//有查看全部工作单的权限 获取条件查询列表
+					wssRemote.getWorkSheetQueryListContents();
+				}else if(wsw.flag == "false"){
+					//有查看自己工作单的权限
+					wssRemote.getOwnWorkSheetQueryListContents();
+				}
+			}
+			private function getWorkSheetQueryListContentsResult(event:ResultEvent):void{
+				var obj:Object = event.result as Object;
+				operatorNames = obj.operatorNames as ArrayCollection;
+				creatorNames = obj.creatorNames as ArrayCollection;
+				buildingList = obj.buildingList as ArrayCollection;
+			}
+			
+			private function getOwnWorkSheetQueryListContentsResult(event:ResultEvent):void{
+				var obj:Object = event.result as Object;
+				operatorNames = obj.operatorNames as ArrayCollection;
+				creatorNames = obj.creatorNames as ArrayCollection;
+				buildingList = obj.buildingList as ArrayCollection;
+			}
+			
+			private function getAllCabinetsResult(event:ResultEvent):void{
+				cabinetArr = event.result as ArrayCollection;
+				cabinet1Combox.dataProvider = cabinetArr;
+				cabinet2Combox.dataProvider = copyAttribute(cabinetArr);
+			}
+			
+			private function getCabinetsByBuildingIdResult(event:ResultEvent):void{
+				cabinetArr = event.result as ArrayCollection;
+				cabinet1Combox.dataProvider = copyAttribute(cabinetArr);
+				cabinet2Combox.dataProvider = copyAttribute(cabinetArr);
+			}
+			/**
+			 * 二个机柜用同一个数据源 由于重写的combobox，在combobox上写入数据时，删除的时候会出现对2个combobox操作
+			 * */
+			private function copyAttribute(array:ArrayCollection):ArrayCollection{
+				try{
+					var byteArray:ByteArray = new ByteArray();
+					byteArray.writeObject(array);
+					byteArray.position = 0;
+					var arr:ArrayCollection = byteArray.readObject() as ArrayCollection;
+					return arr;
+				}catch(e:EOFError){
+					trace(e);
+					return null;
+				}
+				return null;
+			}
+			/**
+			 * 查询条件 通过建筑获得机柜
+			 * 获得机柜
+			 * */	
+			private function getCabinet():void{
+				if(buildCombox.selectedItem!=null){
+					cabinet1Combox.text = "";
+					cabinet2Combox.text = "";
+					cabinet1Combox.selectedIndex = -1;
+					cabinet2Combox.selectedIndex = -1;
+					var buildId:int = buildCombox.selectedItem.id;
+					wssRemote.getCabinetsByBuildingId(buildId);
+				}
+			}
+			
+			/**
+			 *   点击查询按钮 查询工作单
+			 * */
+			private function queryWorkSheet():void{
+				if(groupIndex == 0){
+					getQueryValue();
+					wsw.grid1.pageNo = 1;
+					wsw.grid1.queryPage.numInput.text = "1";
+					wsw.grid1.judgeRemote(0);
+				}else if(groupIndex == 1){
+					getQueryValue();
+					wsw.grid2.pageNo = 1;
+					wsw.grid2.queryPage.numInput.text = "1";
+					if(state1.selectedItem!=null){
+						state = state1.selectedItem.name;
+					}
+					wsw.grid2.judgeRemote(1);
+				}else if(groupIndex == 2){
+					getQueryValue();
+					wsw.grid3.pageNo = 1;
+					wsw.grid3.queryPage.numInput.text = "1";
+					wsw.grid3.judgeRemote(2);
+				}else if(groupIndex == 3){
+					getQueryValue();
+					if(state2.selectedItem!=null){
+						state = state2.selectedItem.key;
+					}
+					wsw.grid4.pageNo = 1;
+					wsw.grid4.queryPage.numInput.text = "1";
+					wsw.grid4.judgeRemote(3);
+				}
+				
+			}
+			/**
+			 * 获取查询条件的值
+			 * */
+			private function getQueryValue():void{
+				setValueNull();
+				if(createTimeFroms.text != ""){
+					createTimeFrom = DateField.stringToDate(createTimeFroms.text,"YYYY-MM-DD");
+					createTimeFrom.hours = 0;
+					createTimeFrom.minutes = 00;
+					createTimeFrom.seconds = 00;
+				}
+				if(createTimeTos.text != ""){
+					createTimeTo = DateField.stringToDate(createTimeTos.text,"YYYY-MM-DD");
+					createTimeTo.hours = 23;
+					createTimeTo.minutes = 59;
+					createTimeTo.seconds = 59;
+				}
+				if (createTimeFroms.text != "" && createTimeTos.text != ""){
+					if (createTimeTo.time < createTimeFrom.time) {
+//						Alert.show("结束日期不得早于起始日期，请重新选择！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00138"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return;
+					}
+				}
+				if(cabinet1Combox.selectedItem!=null){
+					cabinetId = cabinet1Combox.selectedItem.id;
+				}
+				if(cabinet2Combox.selectedItem!=null){
+					targetCabinetId = cabinet2Combox.selectedItem.id;
+				}
+				if(operationCombox.selectedItem!=null){
+					operationName = operationCombox.selectedItem.key;
+				}
+				if(creatorNameComBox.selectedItem!=null){
+					creatorName = creatorNameComBox.selectedItem.toString(); 
+				}
+				if(operatorComBox.selectedItem!=null){
+					operatorName = operatorComBox.selectedItem.toString();
+				}
+			}
+			
+			/**
+			 * 初始化值为null
+			 * */
+			private function setValueNull():void{
+				createTimeFrom = null;
+				createTimeTo = null;
+				cabinetId = null;
+				targetCabinetId = null;
+				operationName = null;
+				operatorName = null;
+				creatorName = null;
+				state = null;
+			}
+			private function clear():void{	
+				createTimeFroms.text = "";
+				createTimeTos.text = "";
+				buildCombox.selectedIndex = -1;
+				cabinet1Combox.selectedIndex = -1;
+				cabinet2Combox.selectedIndex = -1;
+				operationCombox.selectedIndex = -1;
+				operatorComBox.selectedIndex = -1
+				creatorNameComBox.selectedIndex = -1;
+				 if(groupIndex == 1){
+					 state1.selectedIndex = -1;
+				 }if(groupIndex == 3){
+					state2.selectedIndex = -1;
+				}
+			}
+			private function onFault(event:FaultEvent):void {
+				if(wsw.grid1.alertShow == 0){
+					wsw.grid1.alertShow == 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						wsw.grid1.alertShow == 0;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace gokei "widgets.WiringSheet.*";
+		.myStyle{
+			textAlign:right;
+			verticalAlign:middle;
+			fontWeight:bold;
+		}
+	</fx:Style>
+	
+	<s:states>
+		<s:State name="init"/>
+		<s:State name="noCompleted"/>
+		<s:State name="completed"/>
+		<s:State name="history"/>
+	</s:states>
+	
+	<s:Rect width="100%" height="25" radiusX="5" radiusY="5">
+		<s:stroke>
+			<s:SolidColorStroke color="#696969" weight="2" />
+		</s:stroke>
+	</s:Rect>
+		
+	<s:Label id="totalLabel" width="100%" height="25" textAlign="center" verticalAlign="middle"/>
+		
+	<s:Rect y="30" width="100%" height="65" radiusX="5" radiusY="5">
+		<s:stroke>
+			<s:SolidColorStroke color="#696969" weight="2"/>
+		</s:stroke>
+
+	</s:Rect>
+		
+	<s:HGroup width="100%" y="35">
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00318')}" styleName="myStyle" height="100%" width="120"/>
+		<mx:DateField id="createTimeFroms" width="100" height="25" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+			
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00319')}" styleName="myStyle" height="100%" width="120"/>
+		<mx:DateField id="createTimeTos" width="100" height="25" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+			
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00175')}" styleName="myStyle" height="100%" width="120"/>
+		<gokei:FilterComBox id="buildCombox" width="100" dataProvider="{buildingList}" labelField="name" change="getCabinet()"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00320')}" styleName="myStyle" height="100%" width="120"/>
+		<gokei:FilterComBox id="cabinet1Combox" width="100" labelField="code"/>
+			
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00321')}" styleName="myStyle" height="100%" width="120"/>
+		<gokei:FilterComBox id="cabinet2Combox" width="100" labelField="code"/>
+	</s:HGroup>
+		
+	<s:HGroup width="100%" y="65">
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00322')}" styleName="myStyle" height="100%" width="120"/>
+		<gokei:FilterComBox id="operationCombox" width="100" dataProvider="{operation}" labelField="name"/>
+			
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00349')}" styleName="myStyle" height="100%" width="120" includeIn="noCompleted"/>
+		<gokei:FilterComBox id="state1" width="100" includeIn="noCompleted" dataProvider="{noCompletedState}" labelField="name"/>
+			
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00349')}" styleName="myStyle" height="100%" width="120" includeIn="history"/>
+		<gokei:FilterComBox id="state2" width="100" includeIn="history" dataProvider="{historyState}" labelField="name"/>
+		
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','I00027')}" styleName="myStyle" height="100%" width="120"/>
+		<gokei:FilterComBox id="operatorComBox" width="100" dataProvider="{operatorNames}"/>
+			
+		<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00323')}" styleName="myStyle" height="100%" width="120"/>
+		<gokei:FilterComBox id="creatorNameComBox" width="100" dataProvider="{creatorNames}"/>
+			
+		<s:Label height="100%" width="80"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00042')}" click="queryWorkSheet()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00043')}" click="clear()"/>
+	</s:HGroup>
+	
+</s:Group>

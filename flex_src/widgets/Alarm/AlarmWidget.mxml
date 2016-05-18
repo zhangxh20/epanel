@@ -1,0 +1,1383 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"
+				   xmlns:gokei="widgets.WiringSheet.*"
+				   xmlns:pading="widgets.Alarm.paging.*"
+				   creationComplete="init()"
+				   widgetConfigLoaded="checkAuth(event)">
+	<fx:Declarations>
+		<s:RemoteObject id="wsRemote" destination="warningService" fault="onFault(event)">
+			<s:method name="getWarningQueryListContents" result="getWarningQueryListContentsResult(event)"/>
+			<s:method name="queryWarningInWarning" result="queryWarningInWarningResult(event)"/>
+			<s:method name="queryWarningEndWarning" result="queryWarningEndWarningResult(event)"/>
+			<s:method name="getEndWarningQueryListContents" result="getEndWarningQueryListContentsResult(event)"/>
+			<s:method name="exportWarningInWarning" result="exportWarningInWarningResult(event)"/>
+			<s:method name="exportWarningEndWarning" result="exportWarningEndWarningResult(event)"/>
+			<s:method name="removeWSOperatorWarning" result="removeWSOperatorWarningResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="csRemote" destination="chainService" fault="onFault(event)">
+			<s:method name="getChainByPortId" result="chainResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="ccRemote" destination="collectorService" fault="onFault(event)">
+			<s:method name="getControllerByCollectorId" result="getControllerResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+		<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace viewer "com.esri.viewer.*";
+		@namespace gokei "widgets.WiringSheet.*";
+		@namespace pading "widgets.Alarm.paging.*";
+		.myStyle{
+			textAlign:right;
+			verticalAlign:middle;
+			fontWeight:bold;
+		}
+	</fx:Style>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.ags.Graphic;
+			import com.esri.ags.events.FindEvent;
+			import com.esri.ags.geometry.MapPoint;
+			import com.esri.ags.layers.GraphicsLayer;
+			import com.esri.ags.symbols.PictureMarkerSymbol;
+			import com.esri.ags.tasks.FindTask;
+			import com.esri.ags.tasks.supportClasses.FindParameters;
+			import com.esri.ags.tasks.supportClasses.FindResult;
+			import com.esri.viewer.AppEvent;
+			import com.esri.viewer.ViewerContainer;
+			import com.gokei.components.EventType;
+			import com.gokei.entitys.UserInfo;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.events.IndexChangedEvent;
+			import mx.formatters.DateFormatter;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import spark.events.GridEvent;
+			
+			public var selectPageIndex:Number = 0; //告警页面索引
+			/*--------------------------------告警页面上的所有属性--------------------------------*/
+			[Bindable]
+			private var queryWaringListInWaring:ArrayCollection;
+			private var dateFormatter:DateFormatter = new DateFormatter();
+			private var timer:Timer;
+			[Bindable]
+			private var operatorNameArr:ArrayCollection //现场操作员集合
+			[Bindable]
+			private var waringTypeList:ArrayCollection = new ArrayCollection([
+				//				{id:"0",name:"端口"},{id:"1",name:"系统设备"},{id:"2",name:"工作单"},{id:"4",name:"终端"}
+				{id:"0",name:ResourceManager.getInstance().getString("ViewerStrings","I00007")},{id:"1",name:ResourceManager.getInstance().getString("ViewerStrings","I00008")},{id:"2",name:ResourceManager.getInstance().getString("ViewerStrings","I00009")},{id:"4",name:ResourceManager.getInstance().getString("ViewerStrings","I00010")}
+				//{id:"3",name:"半插"},
+			]);
+			[Bindable]
+			private var contentArr:ArrayCollection = new ArrayCollection([
+				//告警内容，插入错误、拔出错误、半插入、设备断开连接、超时
+				//				{id:"0",name:"插入错误"},{id:"1",name:"拔出错误"},{id:"3",name:"断开连接"},{id:"4",name:"执行超时"},
+				{id:"0",name:ResourceManager.getInstance().getString("ViewerStrings","E00010")},{id:"1",name:ResourceManager.getInstance().getString("ViewerStrings","E00011")},{id:"3",name:ResourceManager.getInstance().getString("ViewerStrings","E00012")},{id:"4",name:ResourceManager.getInstance().getString("ViewerStrings","E00013")},
+				//				{id:"7",name:"非法侵入"},{id:"8",name:"非法操作"}
+				{id:"7",name:ResourceManager.getInstance().getString("ViewerStrings","E00014")},{id:"8",name:ResourceManager.getInstance().getString("ViewerStrings","E00015")}
+				//{id:"5",name:"配线架被拔除"},{id:"6",name:"网关失去连接"},{id:"7",name:"终端mac地址变化"}
+				//{id:"2",name:"半插错误"},
+			]);
+			[Bindable]
+			private var recordCount1:int//告警：总条数
+			public var pageNo1:int = 1;//告警：当前第一页
+			public var pageCount1:int ; //告警：总页数
+			private var GJNo1:String ;//告警单号
+			private var contentFlag1:int = -1;//故障类型
+			private var _beginDateFrom1:Date; //开始时间段
+			private var _beginDateTo1:Date;
+			private var _warnType1:String;//告警类型
+			private var _operatorName1:String ;//现场操作员
+			
+			/*--------------------------------已修复页面上的所有属性--------------------------------*/
+			[Bindable]
+			private var waringListEndWaring:ArrayCollection;
+			[Bindable]
+			private var operatorList:ArrayCollection; //现场操作员
+			[Bindable]
+			private var repairmanList:ArrayCollection;//修复人员
+			[Bindable]
+			private var recordCount2:int//已修复：总条数
+			public var pageNo2:int = 1;//已修复：当前第一页
+			private var pageCount2:int ; //已修复：总页数
+			private var GJNo2:String ;//告警单号
+			private var contentFlag2:int = -1;
+			private var _beginDateFrom2:Date; //开始时间段
+			private var _beginDateTo2:Date;
+			private var _repairDateFrom:Date//修复时间段
+			private var _repairDateTo:Date;
+			private var _warnType2:String;//告警类型
+			private var _operatorName2:String ;//现场操作员
+			private var repairmanName:String;//修复人员
+			[Bindable]
+			private var exportHistoryAuth:Boolean;
+			private var warnType:Object = new Object();
+			
+			private var file:FileReference = new FileReference();			
+			private var fileType:FileFilter = new FileFilter("Excel","*.xlsx;*.xls");
+			private var fileTypes:Array = new Array(fileType);
+			private var graphicsLayer:GraphicsLayer; // 点位图告警的图层
+			
+			private var controllerId : int = 0;
+			/**
+			 * 初始化
+			 * */
+			private function init():void{
+				//				warnType["0"] = "端口";
+				warnType["0"] = ResourceManager.getInstance().getString("ViewerStrings","I00007");
+				//				warnType["1"] = "系统设备";
+				warnType["1"] = ResourceManager.getInstance().getString("ViewerStrings","I00008");
+				//				warnType["2"] = "工作单";
+				warnType["2"] = ResourceManager.getInstance().getString("ViewerStrings","I00009");
+				//warnType["3"] = "半插";
+				initRemote();
+				timer = new Timer(1000);
+				timer.addEventListener(TimerEvent.TIMER,updateTimer);
+				AppEvent.addListener(EventType.ALARM_PUSH,alarmPush);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				timer.start();
+				wt.resizable = false;
+				file.addEventListener(IOErrorEvent.IO_ERROR,errorFunc);
+				file.addEventListener(Event.COMPLETE,downloadFileComp);
+				// 点位图告警用图层
+				graphicsLayer = new GraphicsLayer();
+				map.addLayer(graphicsLayer);
+			}
+			
+			private function errorFunc(event : IOErrorEvent):void{
+				//				Alert.show("文件下载失败！","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00016"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+			}
+			
+			private function downloadFileComp(event : Event):void{
+				//				Alert.show("成功下载","提示");
+				Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00011"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+			}
+			
+			private function alarmPush(event:AppEvent):void{
+				//				alarmExportBtn.label == "导出" ; 
+				alarmExportBtn.label == ResourceManager.getInstance().getString("ViewerStrings","I00012") ; 
+				if (historyExportBtn){
+					//					historyExportBtn.label == "导出" ;
+					historyExportBtn.label == ResourceManager.getInstance().getString("ViewerStrings","I00012") ;
+				}
+				initRemote();
+				var data : Object = { arr : [EventType.REFRESH_ID[13]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+				// 告警刷新时,点位图的告警图标消失
+				graphicsLayer.clear();
+			}
+			
+			private function refresh(event:AppEvent):void {
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[0] == item) {
+						wsRemote.getWarningQueryListContents();
+						wsRemote.getEndWarningQueryListContents();
+					} else if (EventType.REFRESH_ID[1] == item) {
+						wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+							_warnType2,_operatorName2,repairmanName,pageNo2);
+						wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+					}
+				}
+			}
+			
+			private function initRemote():void{
+				wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+					_warnType2,_operatorName2,repairmanName,pageNo2);
+				wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+				wsRemote.getWarningQueryListContents();
+				wsRemote.getEndWarningQueryListContents();
+			}
+			//获取当前登录者
+			public var userInfo:UserInfo = ViewerContainer.getInstance().switchManager.userInfo;
+			//获取当前登陆者的权限集合
+			public var authList:ArrayCollection = userInfo.roleInfo.authIdList as ArrayCollection;
+			public var xml:XML;
+			
+			/**
+			 * 判断当前操作员是否有相应的权限
+			 * */
+			private function checkAuth(event:Event):void{
+				for each( xml in configXML.buttons.button){
+					if(xml.@name == "AlarmExport"){
+						for (var i:int = 0; i < authList.length; i++) {
+							if(xml.@id == authList.getItemAt(i)){
+								alarmExportBtn.visible = true;
+								break ;
+							}
+						}
+					}
+					if(xml.@name == "HistoryExport"){
+						for (var j:int = 0; j < authList.length; j++) {
+							if(xml.@id == authList.getItemAt(j)){
+								exportHistoryAuth = true;
+								break;
+							}
+						}
+					}
+				}
+			}	
+			
+			[Bindable]
+			private var portArray:ArrayCollection = new ArrayCollection(
+				//				[{code:"cabinetShow",name:"机柜展示图"},{code:"cabinetMng",name:"机柜管理图"},{code:"cad",name:"点位图"},{code:"chain",name:"链路图"}]); //端口
+				[{code:"cabinetShow",name:ResourceManager.getInstance().getString("ViewerStrings","C00034")},{code:"cabinetMng",name:ResourceManager.getInstance().getString("ViewerStrings","C00035")},{code:"cad",name:ResourceManager.getInstance().getString("ViewerStrings","C00036")},{code:"chain",name:ResourceManager.getInstance().getString("ViewerStrings","C00037")}]); //端口
+			//			private var workSheetArray:ArrayCollection = new ArrayCollection([{code:"workSheet",name:"工作单"}]); //工作单
+			private var workSheetArray:ArrayCollection = new ArrayCollection([{code:"workSheet",name:ResourceManager.getInstance().getString("ViewerStrings","C00038")}]); //工作单
+			//			private var equipmentArray:ArrayCollection = new ArrayCollection([{code:"mainTree",name:"维护树形图"}]); //系统设备
+			private var equipmentArray:ArrayCollection = new ArrayCollection([{code:"mainTree",name:ResourceManager.getInstance().getString("ViewerStrings","C00039")}]); //系统设备
+			//			private var insertArray:ArrayCollection = new ArrayCollection([{code:"cabinetShow",name:"机柜展示图"},{code:"cabinetMng",name:"机柜管理图"}]); //办插	
+			private var insertArray:ArrayCollection = new ArrayCollection([{code:"cabinetShow",name:ResourceManager.getInstance().getString("ViewerStrings","C00040")},{code:"cabinetMng",name:ResourceManager.getInstance().getString("ViewerStrings","C00041")}]); //办插	
+			private var cabinetId:int;//获取机柜ID
+			
+			private function selectLinkType(event:GridEvent):void{
+				if(event.item == null){
+					return;
+				}
+				var filterCom:DropDownList;
+				if (selectPageIndex == 0) {
+					filterCom = linkComboBox;
+				} else {
+					filterCom = repairLinkComboBox;	
+				}
+				//				if (event.item.content == "非法操作") {
+				if (event.item.content == ResourceManager.getInstance().getString("ViewerStrings","E00015")) {
+					repWSBtn.enabled = true;
+				} else {
+					repWSBtn.enabled = false;
+				}
+				switch(event.item.warnType)
+				{
+					case "0":	 
+						filterCom.dataProvider = portArray;
+						break; 
+					case "1": 
+						filterCom.dataProvider = equipmentArray;
+						break; 
+					case "2": 
+						filterCom.dataProvider = workSheetArray;
+						break; 
+					case "3": 
+						filterCom.dataProvider = insertArray;
+						break; 
+					default: 
+				}
+			}
+			
+			private function link():void {
+				var code:String = null;
+				var item:Object = null;
+				if(selectPageIndex == 0){	
+					if(!linkComboBox.selectedItem || !dataGrid1.selectedItem)
+						return ;
+					code = linkComboBox.selectedItem.code;
+					item = dataGrid1.selectedItem;
+				}else{
+					if(!repairLinkComboBox.selectedItem || !dataGrid2.selectedItem)
+						return ;
+					code = repairLinkComboBox.selectedItem.code;
+					item = dataGrid2.selectedItem;
+				}
+				var obj:Object;
+				switch (code) {
+					case "cabinetShow" :
+						obj = new Object();
+						obj.cabinetId = item.cabinet.id;
+						obj.uNo = item.parent.uNo;
+						obj.portCode = item.warningObject.code;
+						AppEvent.dispatch(EventType.BASEMAP_CHANGE, 3);
+						AppEvent.dispatch(EventType.ALARM_CABINET,obj);
+						break;
+					case "cabinetMng" :
+						obj = new Object();
+						obj.cabinetId = item.cabinet.id;
+						obj.uNo = item.parent.uNo;
+						obj.portCode = item.warningObject.code;
+						AppEvent.dispatch(EventType.BASEMAP_CHANGE, 4);
+						AppEvent.dispatch(EventType.ALARM_CABINET,obj);
+						break;
+					case "chain" :
+						obj = new Object();
+						obj.portId = item.warningObject.id;
+						obj.type = item.warnType as int; 
+						AppEvent.dispatch(AppEvent.WIDGET_RUN,4);
+						setTimeout(function():void{AppEvent.dispatch(EventType.CHAIN_SHOW,obj);},500);
+						break;  
+					case "cad" :
+						//根据端口在CAD上找到信息点编号
+						csRemote.getChainByPortId(item.warningObject.id);
+						break ;
+					case "workSheet" :
+						obj = new Object();
+						var _id:int = item.warningObject.id;
+						obj.workSheetId = _id;
+						AppEvent.dispatch(AppEvent.WIDGET_RUN,2);
+						AppEvent.dispatch(EventType.WORKSHEET_SHOW,obj);
+						break ;
+					case "mainTree" :
+						obj = new Object();
+						//系统设备告警 切换到维护树形图
+						//系统设备ID
+						obj.id = item.warningObject.id;
+						var type : int = int(item.objectType);
+						obj.gatewayId = item.gateway.id;
+						if(type == 3){ //采集器
+							obj.type = 'collector';
+							obj.controllerId = item.warningObject.controllerId;
+						}else if(type == 2){//控制器
+							obj.type = 'controller';
+						} else if(type == 6){
+							//配线架
+							obj.type = 'shelf';
+							obj.collectorId = item.warningObject.collectorId;
+							//remote
+							ccRemote.getControllerByCollectorId(int(obj.collectorId));
+						}
+						if(selectPageIndex == 0){
+							obj.warning = true;
+						}else{
+							obj.warning = false;
+						}
+						AppEvent.dispatch(AppEvent.WIDGET_RUN,3);
+						setTimeout(function():void{
+							//通过采集器ID 查找出控制器ID
+							if (type == 6){
+								obj.controllerId = controllerId;
+							}
+							AppEvent.dispatch(EventType.EQMTALARM_MAINTREE,obj);},1000);
+						break;
+					default :
+						break
+				}
+				
+			}
+			private function chainResult(event:ResultEvent):void {
+				var chain:ArrayCollection = event.result as ArrayCollection;
+				var obj:Object = chain[0];
+				//如果端口的起始端连接着信息点 
+				if(obj.parentType == "2"){
+					var spotCode:String = obj.parent.code+obj.code;
+					var findTask:FindTask = new FindTask();
+					findTask.url = configData.basemaps[2].url;
+					findTask.concurrency = "last"; 
+					var findParameters:FindParameters = new FindParameters();
+					findParameters.layerIds = [1];
+					findParameters.searchFields = ["name"];
+					findParameters.searchText = spotCode;
+					findParameters.returnGeometry = true;
+					findTask.execute(findParameters);
+					findTask.addEventListener(FindEvent.EXECUTE_COMPLETE,executeComplete);
+				}else{
+					//					Alert.show("该端口没有链接到信息点","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00017"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+			}
+			private function executeComplete(event:FindEvent):void{
+				//切换底图
+				AppEvent.dispatch(EventType.BASEMAP_CHANGE,2)
+				//定位
+				var mapPoint:MapPoint = (event.findResults[0] as FindResult).feature.geometry as MapPoint;
+				map.centerAt(mapPoint);
+				map.scale = 1E9;
+				graphicsLayer.clear();
+				var graphic:Graphic = (event.findResults[0] as FindResult).feature;
+				var pictureSymbol:PictureMarkerSymbol = new PictureMarkerSymbol();
+				pictureSymbol.source = "assets/images/Red_glow.swf";
+				graphic.symbol = pictureSymbol;
+				graphicsLayer.add(graphic);
+			}
+			
+			private function exportExcel():void{
+				if(selectPageIndex == 0){
+					//					if(alarmExportBtn.label == "导出"){
+					if(alarmExportBtn.label == ResourceManager.getInstance().getString("ViewerStrings","I00012")){
+						//						alarmExportBtn.label = "导出中...";
+						alarmExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00013");
+						alarmExportBtn.enabled = false;
+						wsRemote.exportWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1);
+					}else{
+						file.download(new URLRequest(CommonUtil.getRootPath() + "/download/Alarm.xlsx?p=" + new Date().milliseconds),"Alarm.xlsx");
+					}
+				}else{
+					//					if(historyExportBtn.label == "导出"){
+					if(historyExportBtn.label == ResourceManager.getInstance().getString("ViewerStrings","I00012")){
+						//						historyExportBtn.label = "导出中...";
+						historyExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00013");
+						historyExportBtn.enabled = false;
+						wsRemote.exportWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,_warnType2,_operatorName2,repairmanName);
+					}else{
+						file.download(new URLRequest(CommonUtil.getRootPath() + "/download/Alarm.xlsx?p=" + new Date().milliseconds),"RepaireAlarm.xlsx");
+					}
+				}
+			}
+			
+			/*--------------------------------告警页面上的所有方法--------------------------------*/
+			private function updateTimer(evt:TimerEvent):void{
+				dateFormatter.formatString = "YYYY-MM-DD JJ:NN:SS";
+				nowDate.text =  dateFormatter.format(new Date());
+			}
+			/**
+			 * 初始化查询条件数据
+			 * */
+			private function getWarningQueryListContentsResult(event:ResultEvent):void{
+				operatorNameArr = event.result as ArrayCollection;
+			}
+			private function exportWarningInWarningResult(event:ResultEvent):void{
+				//				alarmExportBtn.label = "下载";
+				alarmExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00014");
+				alarmExportBtn.enabled = true;
+			}
+			
+			private function exportWarningEndWarningResult(event:ResultEvent):void{
+				//				historyExportBtn.label = "下载";
+				historyExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00014");
+				historyExportBtn.enabled = true;
+			}
+			private function queryWarningInWarningResult(event:ResultEvent):void{
+				var obj:Object = event.result as Object;
+				queryWaringListInWaring = obj.list as ArrayCollection;
+				recordCount1 = obj.recordCount as int;
+				//改BUG
+				if (recordCount1 == 0){
+					alarmExportBtn.enabled = false;
+				} else {
+					alarmExportBtn.enabled = true;
+				}
+				pageCount1 = obj.pageCount as int;
+				waringCountInWaring.text = recordCount1.toString();
+				if(selectPageIndex == 0){
+					page1.totalPage.text = pageCount1.toString();
+				}
+				//				alarmExportBtn.label = "导出";
+				alarmExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+			}
+			/**
+			 * 获取告警单号
+			 * */
+			private function getWaringNo(item:Object,grid:GridColumn):String{
+				return "GJ"+item.id;
+			}
+			/**
+			 * 获取告警发生时间
+			 * */
+			private function getBeginDate(item:Object,grid:GridColumn):String{
+				var date:Date = item.beginDate;
+				var dateFormatter:DateFormatter = new DateFormatter();
+				dateFormatter.formatString = "YYYY-MM-DD JJ:NN:SS";
+				return dateFormatter.format(date);;
+			}
+			
+			/**
+			 * 获取告警类型
+			 * */
+			private function getWarnType(item:Object,grid:GridColumn):String{
+				var str:String = item.warnType;
+				return warnType[str];
+			}
+			/**
+			 * 获取告警位置
+			 * */
+			private function getLocation(item:Object,grid:GridColumn):String{
+				var objectType:String = item.objectType; // 对象类别
+				var location:String="";
+				switch(objectType)
+				{
+					case "0": //端口
+						if(item.objectName!=null){
+							//							location+="端口所在设备名称:"+item.objectName;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00042")+item.objectName;
+						}
+						if(item.building!=null){
+							//							location+="/建筑名称:"+item.building.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00043")+item.building.name;
+						}
+						if(item.area!=null){
+							//							location+="/楼层:"+item.area.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00044")+item.area.name;
+						}
+						if(item.cabinet!=null){
+							//							location+="/机柜ID:"+item.cabinet.code;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00045")+item.cabinet.code;
+						}
+						if(item.parent!=null&&item.cabinet!=null){
+							//							location+="/所在U层:"+item.parent.uNo + "U";
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00046")+item.parent.uNo + "U";
+						}
+						if(item.warningObject!=null){
+							//							location+="/端口序号:"+item.warningObject.code;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00047")+item.warningObject.code;
+						}
+						return location;
+						break;
+					case "1": //工作单
+						if(item.warningObject!=null){
+							//							return item.content+"/工作单号：GZD"+item.warningObject.id;
+							return item.content+ResourceManager.getInstance().getString("ViewerStrings","C00048")+item.warningObject.id;
+						}
+						return "--";
+						break;
+					case "2"://控制器
+						if(item.objectName!=null){
+							//							location+="设备名称:"+item.objectName;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00069")+item.objectName;
+						}
+						if(item.building!=null){
+							//							location+="/建筑名称:"+item.building.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00049")+item.building.name;
+						}
+						if(item.area!=null){
+							//							location+="/楼层:"+item.area.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00050")+item.area.name;
+						}
+						if(item.cabinet!=null){
+							//							location+="/机柜ID:"+item.cabinet.code;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00051")+item.cabinet.code;
+						}
+						if(item.warningObject!=null){
+							//							location += "/智能管理主机出厂编号:" ;
+							location += ResourceManager.getInstance().getString("ViewerStrings","C00052") ;
+							if(item.warningObject.code == null){
+								location += " ";
+							}else{
+								location += item.warningObject.code;
+							}
+							//							location+="/所在U层:"+item.warningObject.uNo + "U";
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00053")+item.warningObject.uNo + "U";
+						}
+						return location;
+						break;
+					case "3"://采集器
+						if(item.objectName!=null){
+							//							location+="设备名称:"+item.objectName;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00054")+item.objectName;
+						}
+						if(item.building!=null){
+							//							location+="/建筑名称:"+item.building.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00055")+item.building.name;
+						}
+						if(item.area!=null){
+							//							location+="/楼层:"+item.area.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00056")+item.area.name;
+						}
+						if(item.cabinet!=null){
+							//							location+="/机柜ID:"+item.cabinet.code;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00057")+item.cabinet.code;
+						}
+						if(item.warningObject!=null){
+							//							location+="/扫描仪出厂编号:" ;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00058") ;
+							if(item.warningObject.code == null){
+								location += " " ;
+							}else{
+								location += item.warningObject.code;
+							}
+							//							location+="/所在U层:"+item.warningObject.uNo + "U";
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00059")+item.warningObject.uNo + "U";
+						}
+						return location;
+						break;
+					case "4"://网关
+						//						location+="设备名称:网关"
+						location+=ResourceManager.getInstance().getString("ViewerStrings","C00060")
+						if(item.warningObject!=null){
+							//							location+="/网关出厂编号："
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00061")
+							if(item.warningObject.productNo == null){
+								location += " " ;
+							}else{
+								location += item.warningObject.productNo;
+							}
+							//							location+="/网关ip："+item.warningObject.ip;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00062")+item.warningObject.ip;
+							//							location+="/网关位置："+item.warningObject.location;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00063")+item.warningObject.location;
+						}
+						return location;
+						break;
+					case "5":// 终端
+						if(item.objectName!=null){
+							//							location+="终端名称:"+item.objectName;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00064")+item.objectName;
+						}
+						if(item.building!=null){
+							//							location+="/建筑名称:"+item.building.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00065")+item.building.name;
+						}
+						if(item.area!=null){
+							//							location+="/楼层:"+item.area.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00066")+item.area.name;
+						}
+						if(item.room!=null){
+							//							location+="/房间:"+item.room.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00067")+item.room.name;
+						}
+						if(item.warningObject!=null&&item.parent!=null){
+							//							location+="/信息点编号:"+item.parent.code+item.warningObject.code;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00068")+item.parent.code+item.warningObject.code;
+						}
+						return location;
+						break;
+					case "6":// 配线架
+						if(item.objectName!=null){
+							//							location+="设备名称:"+item.objectName;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00069")+item.objectName;
+						}
+						if(item.building!=null){
+							//							location+="/建筑名称:"+item.building.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00070")+item.building.name;
+						}
+						if(item.area!=null){
+							//							location+="/楼层:"+item.area.name;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00071")+item.area.name;
+						}
+						if(item.cabinet!=null){
+							//							location+="/机柜ID:"+item.cabinet.code;
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00072")+item.cabinet.code;
+						}
+						if(item.warningObject!=null){
+							//							location+="/所在U层:"+item.warningObject.uNo + "U";
+							location+=ResourceManager.getInstance().getString("ViewerStrings","C00073")+item.warningObject.uNo + "U";
+						}
+						return location;
+						break;
+					default:
+						return null;
+				}
+			}
+			/**
+			 * 获取现场操作员姓名
+			 * */
+			private function getOperatorName(item:Object,grid:GridColumn):String{
+				var user:Object = item.operator;
+				if(user==null){
+					return "--";
+				}
+				return user.name;
+			}
+			/**
+			 * 分页
+			 * */
+			public function prePage(i:int):void{
+				if(i == 1){
+					if(pageNo1>1){
+						pageNo1--;
+						page1.numInput.text = pageNo1.toString();
+						wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+					}else{
+						return ;
+					}
+				}else{
+					if(pageNo2>1){
+						pageNo2--;
+						page2.numInput.text = pageNo2.toString();
+						wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+							_warnType2,_operatorName2,repairmanName,pageNo2);
+					}else{
+						return ;
+					}
+				}
+			}
+			public function nextPage(i:int):void{
+				if(i == 1){
+					if(pageNo1<pageCount1){
+						pageNo1++;
+						page1.numInput.text = pageNo1.toString();
+						wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+					}else{
+						return ;
+					}
+				}else{
+					if(pageNo2<pageCount2){
+						pageNo2++;
+						page2.numInput.text = pageNo2.toString();
+						wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+							_warnType2,_operatorName2,repairmanName,pageNo2);
+					}else{
+						return ;
+					}
+				}
+			}
+			public function selectPage(i:int):void{
+				if(i == 1){
+					if(page1.numInput.text == ""){
+						return ;
+					}
+					pageNo1 = int(page1.numInput.text);
+					wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+				}else{
+					pageNo2 = int(page2.numInput.text);
+					wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+						_warnType2,_operatorName2,repairmanName,pageNo2);
+				}
+			}
+			/**
+			 * 按照筛选条件查询
+			 * */
+			private function queryWarning(i:int):void{
+				if(i == 1){
+					GJNo1 = "";
+					contentFlag1 = -1;
+					_beginDateFrom1 = null;
+					_beginDateTo1 = null;
+					_warnType1 = null;
+					_operatorName1 = null;
+					pageNo1 = 1;
+					page1.numInput.text = "1";
+					if(GJDH.text != ""){
+						GJNo1 = GJDH.text;
+					}
+					if(content.selectedItem!=null){
+						contentFlag1 = int(content.selectedItem.id);
+					}
+					if(beginDateFrom.text!=""){
+						_beginDateFrom1 = DateField.stringToDate(beginDateFrom.text,"YYYY-MM-DD");
+					}
+					if(_beginDateFrom1 != null){
+						_beginDateFrom1.hours = beginHourFrom.value;
+						_beginDateFrom1.minutes = beginMinFrom.value;
+					}
+					if(beginDateTo.text!=""){
+						_beginDateTo1 = DateField.stringToDate(beginDateTo.text,"YYYY-MM-DD");
+					}
+					if(_beginDateTo1 != null){
+						_beginDateTo1.hours = begingHourTo.value;
+						_beginDateTo1.minutes = beginMinTo.value;
+						_beginDateTo1.seconds = 59;
+					}
+					if(warnType1.selectedItem!=null){
+						_warnType1 = warnType1.selectedItem.id;
+					}
+					if(operator1.selectedItem!=null){
+						_operatorName1 = operator1.selectedItem.toString();
+					}
+					wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+				}else{
+					GJNo2 = null;
+					contentFlag2 = -1;
+					_beginDateFrom2 = null;
+					_beginDateTo2 = null;
+					_repairDateFrom = null
+					_repairDateTo = null;
+					_warnType2 = null;
+					_operatorName2 = null;
+					repairmanName = null;
+					pageNo2 = 1;
+					page2.numInput.text = "1";
+					if(GJDH2.text != ""){
+						GJNo2 = GJDH2.text;
+					}
+					if(content2.selectedItem!=null){
+						contentFlag2 = int(content2.selectedItem.id);
+					}
+					if(beginDateFrom2.text != ""){
+						_beginDateFrom2 = DateField.stringToDate(beginDateFrom2.text,"YYYY-MM-DD");
+					}
+					if(_beginDateFrom2 != null){
+						_beginDateFrom2.hours = beginHourFrom2.value;
+						_beginDateFrom2.minutes = beginMinFrom2.value;
+					}
+					if(beginDateTo2.text != ""){
+						_beginDateTo2 = DateField.stringToDate(beginDateTo2.text,"YYYY-MM-DD");
+					}
+					if(_beginDateTo2 != null){
+						_beginDateTo2.hours = beginHourTo2.value;
+						_beginDateTo2.minutes = beginMinTo2.value;
+						_beginDateTo2.seconds = 59;
+					}
+					if(repairDateFrom.text != ""){
+						_repairDateFrom = DateField.stringToDate(repairDateFrom.text,"YYYY-MM-DD");
+					}
+					if(_repairDateFrom != null){
+						_repairDateFrom.hours = repairHourFrom.value;
+						_repairDateFrom.minutes = repairMinFrom.value;
+					}
+					if(repairDateTo.text != ""){
+						_repairDateTo = DateField.stringToDate(repairDateTo.text,"YYYY-MM-DD");
+					}
+					if(_repairDateTo != null){
+						_repairDateTo.hours = repairHourTo.value;
+						_repairDateTo.minutes = repairMinTo.value;
+						_repairDateTo.seconds = 59;
+					}
+					if(warnType2.selectedItem!=null){
+						_warnType2 = warnType2.selectedItem.id;
+					}
+					if(operator2.selectedItem!=null){
+						_operatorName2 = operator2.selectedItem.toString();
+					}
+					if(repairman2.selectedItem!=null){
+						repairmanName = repairman2.selectedItem.toString();
+					}
+					wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+						_warnType2,_operatorName2,repairmanName,pageNo2);
+				}
+			}
+			/*--------------------------------已修复页面上的所有方法--------------------------------*/
+			
+			private function queryWarningEndWarningResult(event:ResultEvent):void{
+				var obj:Object = event.result as Object;
+				waringListEndWaring = obj.list as ArrayCollection;
+				recordCount2 = obj.recordCount as int;
+				pageCount2 = obj.pageCount as int;
+				if(waringCountEndWaring!=null){
+					waringCountEndWaring.text = recordCount2.toString();
+				}
+				if(page2!=null){
+					page2.totalPage.text = pageCount2.toString();
+				}
+				if(historyExportBtn){
+					//					historyExportBtn.label = "导出";
+					historyExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+				}
+			}
+			private function getEndWarningQueryListContentsResult(event:ResultEvent):void{
+				var obj:Object = event.result as Object;
+				operatorList = obj.operatorNames as ArrayCollection;
+				repairmanList = obj.repairmanNames as ArrayCollection;
+			}
+			/**
+			 * 切换TabNavigator
+			 * 由于TabNavigator的问题,导致history页面上所有的组件都为null.
+			 * */
+			private function tabChange(event:IndexChangedEvent):void{
+				selectPageIndex = event.newIndex;
+				waringCountEndWaring.text = recordCount2.toString();
+				page2.totalPage.text = pageCount2.toString();
+				dataGrid2.dataProvider = waringListEndWaring;
+				if (selectPageIndex == 0){
+					//					alarmExportBtn.label = "导出";
+					alarmExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+				} else {
+					//					historyExportBtn.label = "导出";
+					historyExportBtn.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+					//改BUG
+					if(recordCount2 == 0){
+						historyExportBtn.enabled = false;
+					} else{
+						historyExportBtn.enabled = true;
+					}
+				}
+			}
+			/**
+			 * 获取告警修复时间
+			 * */
+			private function getRepairDate2(item:Object,grid:GridColumn):String{
+				var date:Date = item.repairDate;
+				var dateFormatter:DateFormatter = new DateFormatter();
+				dateFormatter.formatString = "YYYY-MM-DD JJ:NN:SS";
+				return dateFormatter.format(date);;
+			}
+			/**
+			 * 获取修复姓名
+			 * */
+			private function getRepairman(item:Object,grid:GridColumn):String{
+				var user:Object = item.repairman;
+				if(user==null){
+					return "--";
+				}
+				return user.name;
+			}
+			
+			/**
+			 * 清空查询列表
+			 * */
+			private function clear():void{
+				if(selectPageIndex == 0){
+					GJDH.text = "";
+					beginDateFrom.text= "";
+					beginHourFrom.value = 0;
+					beginDateTo.text = "";
+					begingHourTo.value = 23;
+					beginMinTo.value = 59;
+					warnType1.selectedIndex = -1;
+					warnType1.text = "";
+					content.selectedIndex = -1;
+					content.text = "";
+					operator1.selectedIndex = -1;
+					operator1.text = "";
+				}else{
+					GJDH2.text = "";
+					beginDateFrom2.text = "";
+					beginHourFrom2.value = 0;
+					beginDateTo2.text = "";
+					beginHourTo2.value = 23;
+					beginMinTo2.value = 59;
+					repairDateFrom.text = "";
+					repairHourFrom.value = 0;
+					repairDateTo.text = "";
+					repairHourTo.value = 23;
+					repairMinTo.value = 59;
+					warnType2.selectedIndex = -1;
+					warnType2.text = "";
+					content2.selectedIndex = -1;
+					content2.text = "";
+					operator2.selectedIndex = -1;
+					operator2.text = "";
+					repairman2.selectedIndex = -1;
+					repairman2.text = "";
+				}
+			}
+			
+			/**
+			 * 二个机柜用同一个数据源 由于重写的combobox，在combobox上写入数据时，删除的时候会出现对2个combobox操作
+			 * */
+			private function copyAttribute(array:ArrayCollection):ArrayCollection{
+				try{
+					var byteArray:ByteArray = new ByteArray();
+					byteArray.writeObject(array);
+					byteArray.position = 0;
+					var arr:ArrayCollection = byteArray.readObject() as ArrayCollection;
+					return arr;
+				}catch(e:EOFError){
+					trace(e);
+					return null;
+				}
+				return null;
+			}
+			
+			private function wt_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt.resizable = false;},200);
+				switch(selectPageIndex)
+				{
+					case 0:
+						if (!page1.clickBtn) {
+							//如果点击了确定 上一页 下一页按钮 则numinput不清空
+							page1.numInput.text = "";
+						}
+						break;
+					case 1:
+						if (!page2.clickBtn) {
+							page2.numInput.text = "";
+						}
+						break;
+					default:
+						break;
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+						//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+						//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+						//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+						//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+			private function checkValueFunction(value:Number):String{
+				var reg : RegExp = /[0-9]/;
+				if (reg.test(value.toString())){
+					return value.toString();
+				}else {
+					return "0";
+				}
+			}
+			
+			private function getControllerResult(event:ResultEvent):void{
+				var obj : Object = event.result ;
+				controllerId = obj.id;
+			}
+			
+			private function repWs():void{
+				var arr : ArrayCollection = new ArrayCollection();
+				arr.addItem(dataGrid1.selectedItem.id);
+				wsRemote.removeWSOperatorWarning(arr);
+			}
+			
+			private function removeWSOperatorWarningResult(event:ResultEvent):void{
+				repWSBtn.enabled = false;
+				if (int(event.result) == 1){
+					//					Alert.show("修复工作单告警成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00015"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					initRemote()
+				} else{
+					//					Alert.show("修复工作单告警失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00088"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			protected function wt_closedHandler(event:Event):void
+			{
+				wsRemote.queryWarningEndWarning(GJNo2,contentFlag2,_beginDateFrom2,_beginDateTo2,_repairDateFrom,_repairDateTo,
+					_warnType2,_operatorName2,repairmanName,pageNo2);
+				wsRemote.queryWarningInWarning(GJNo1,contentFlag1,_beginDateFrom1,_beginDateTo1,_warnType1,_operatorName1,pageNo1);
+			}
+			
+		]]>
+	</fx:Script>
+	<viewer:WidgetTemplate id="wt" width="1298" height="474" fontFamily="{ResourceManager.getInstance().getString('ViewerStrings','Font002')}"
+						   open="wt_openHandler(event)" closed="wt_closedHandler(event)">
+		<mx:TabNavigator width="98%" height="410" backgroundAlpha="0.0" change="tabChange(event)">
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','I00016')}">
+				<s:Scroller width="100%" left="10" right="10" top="5" bottom="10">
+				<s:Group  width="100%" >
+					<s:Rect width="100%" height="25" radiusX="5" radiusY="5">
+						<s:stroke>
+							<s:SolidColorStroke color="#696969" weight="2"/>
+						</s:stroke>
+					</s:Rect>
+					<s:HGroup x="250" width="600" height="25" paddingLeft="0" paddingTop="0">
+						<s:Label width="90" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00017')}"/>
+						<s:Label id="nowDate" width="150" height="25" fontWeight="bold" textAlign="left"
+								 verticalAlign="middle"/>
+						<s:Label width="90" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00018')}"/>
+						<s:Label id="waringCountInWaring" width="90" height="25" color="red"
+								 fontWeight="bold" textAlign="left" verticalAlign="middle"/>
+					</s:HGroup>
+					<s:Rect y="30" width="100%" height="70" radiusX="5" radiusY="5">
+						<s:stroke>
+							<s:SolidColorStroke color="#696969" weight="2"/>
+						</s:stroke>
+					</s:Rect>
+					<s:Scroller y="35" width="100%">
+					<s:VGroup>
+					<s:HGroup width="100%" height="30" paddingTop="2">
+						<s:Label width="90" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00019')}"/>
+						<s:TextInput id="GJDH" width="80" height="25"/>
+						<s:Label width="90" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00020')}"/>
+						<mx:DateField id="beginDateFrom" width="90" height="25"
+									  formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+						<s:NumericStepper id="beginHourFrom" width="50" height="25" maximum="23" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}"/>
+						<s:NumericStepper id="beginMinFrom" width="50" height="25" maximum="59" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00022')}"/>
+						<mx:DateField id="beginDateTo" width="90" height="25"
+									  formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+						<s:NumericStepper id="begingHourTo" width="50" height="25" maximum="23" value="23" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}"/>
+						<s:NumericStepper id="beginMinTo" width="50" height="25" maximum="59" value="59" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00024')}"/>
+						<s:Label width="85" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00025')}"/>
+						<gokei:FilterComBox id="warnType1" width="110" dataProvider="{waringTypeList}"
+											labelField="name"/>
+						<s:Label width="85" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00026')}"/>
+						<gokei:FilterComBox id="content" width="110" dataProvider="{contentArr}"
+											labelField="name"/>
+					</s:HGroup>
+					<s:HGroup paddingTop="2" width="100%">
+						<s:HGroup width="50%" horizontalAlign="left">
+							<s:Label width="85" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00027')}"/>
+							<gokei:FilterComBox id="operator1" width="110"
+												dataProvider="{operatorNameArr}" labelField="name"/>
+						</s:HGroup>
+						<s:HGroup width="50%" horizontalAlign="right">
+							<s:Button label="查询" click="queryWarning(1)"/>
+							<s:Button label="清空" click="clear()"/>
+						</s:HGroup>
+					</s:HGroup>
+					</s:VGroup>
+					</s:Scroller>
+					<s:DataGrid id="dataGrid1" y="110" width="100%" height="220" color="red"
+								dataProvider="{queryWaringListInWaring}" gridMouseDown="selectLinkType(event)" textAlign="center">
+						<s:columns>
+							<s:ArrayCollection>
+								<s:GridColumn width="90" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00028')}" labelFunction="getWaringNo" dataField="id">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label color="white" fontWeight="bold"
+															 horizontalCenter="0" textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="130" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00029')}" labelFunction="getBeginDate" dataField="beginDate">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label color="white" fontWeight="bold"
+															 horizontalCenter="0" textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="80" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00030')}" labelFunction="getWarnType" dataField="warnType">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label color="white" fontWeight="bold"
+															 horizontalCenter="0" textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="80" dataField="content" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00031')}">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label color="white" fontWeight="bold"
+															 horizontalCenter="0" textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00032')}" labelFunction="getLocation" dataField="objectType">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label color="white" fontWeight="bold"
+															 horizontalCenter="0" textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="90" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00033')}"
+											  labelFunction="getOperatorName" dataField="operator">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label color="white" fontWeight="bold"
+															 horizontalCenter="0" textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+							</s:ArrayCollection>
+						</s:columns>
+					</s:DataGrid>
+					<s:HGroup width="100%" y="335" left="20">
+						<s:HGroup width="100%">
+							<s:DropDownList id="linkComboBox" width="100" height="22" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+							<s:Button id="linkBtn" label="{ResourceManager.getInstance().getString('ViewerStrings','I00035')}" click="link()"/>
+							<s:Button id="alarmExportBtn" visible="false" label="{ResourceManager.getInstance().getString('ViewerStrings','I00012')}" click="exportExcel()" enabled="{recordCount1 == 0? false : true}"/>
+							<s:Button id="repWSBtn" label="{ResourceManager.getInstance().getString('ViewerStrings','I00036')}" click="repWs()" enabled="false"/>
+						</s:HGroup>
+						<s:HGroup width="100%" horizontalAlign="right">
+							<pading:QueryPage id="page1" x="700" y="335" alarmWidget="{this}"/>
+						</s:HGroup>
+					</s:HGroup>
+				</s:Group>
+				</s:Scroller>
+			</s:NavigatorContent>
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','I00037')}">
+				<s:Scroller width="100%" left="10" right="10" top="5" bottom="10">
+				<s:Group  width="100%">
+					<s:Rect width="100%" height="25" radiusX="5" radiusY="5">
+						<s:stroke>
+							<s:SolidColorStroke color="#696969" weight="2"/>
+						</s:stroke>
+					</s:Rect>
+					<s:HGroup width="100%" height="25" paddingLeft="0" paddingTop="0">
+						<s:Label width="50%" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00038')}"/>
+						<s:Label id="waringCountEndWaring" width="50%" height="25" textAlign="left"
+								 verticalAlign="middle"/>
+					</s:HGroup>
+					<s:Rect y="30" width="100%" height="70" radiusX="5" radiusY="5">
+						<s:stroke>
+							<s:SolidColorStroke color="#696969" weight="2"/>
+						</s:stroke>
+					</s:Rect>
+					<s:Scroller y="35" width="100%">
+					<s:VGroup>
+					<s:HGroup width="100%" height="30" paddingTop="2">
+						<s:Label width="80" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00039')}"/>
+						<mx:DateField id="beginDateFrom2" width="90" height="25"
+									  formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+						<s:NumericStepper id="beginHourFrom2" width="50" height="25" maximum="23" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}"/>
+						<s:NumericStepper id="beginMinFrom2" width="50" height="25" maximum="59" minimum="0" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00023')}"/>
+						<mx:DateField id="beginDateTo2" width="90" height="25" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+						<s:NumericStepper id="beginHourTo2" width="50" height="25" maximum="23" value="23" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}"/>
+						<s:NumericStepper id="beginMinTo2" width="50" height="25" maximum="59" value="59" minimum="0" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00024')}"/>
+						<s:Label width="84" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00040')}"/>
+						<mx:DateField id="repairDateFrom" width="90" height="25"
+									  formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+						<s:NumericStepper id="repairHourFrom" width="50" height="25" maximum="23" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}"/>
+						<s:NumericStepper id="repairMinFrom" width="50" height="25" maximum="59" minimum="0" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00023')}"/>
+						<mx:DateField id="repairDateTo" width="90" height="25" formatString="YYYY-MM-DD" yearNavigationEnabled="true"/>
+						<s:NumericStepper id="repairHourTo" width="50" height="25" maximum="23" value="23" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00021')}"/>
+						<s:NumericStepper id="repairMinTo" width="50" height="25" maximum="59" minimum="0" value="59" valueFormatFunction="checkValueFunction"/>
+						<s:Label height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00024')}"/>
+					</s:HGroup>
+					<s:HGroup y="70" width="100%"  paddingTop="2">
+						<s:Label width="80" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00028')}"/>
+						<s:TextInput id="GJDH2" width="90" height="25"/>
+						<s:Label width="80" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00030')}"/>
+						<gokei:FilterComBox id="warnType2" width="110" dataProvider="{copyAttribute(waringTypeList)}"
+											labelField="name"/>
+						<s:Label width="80" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00031')}"/>
+						<gokei:FilterComBox id="content2" width="110" dataProvider="{copyAttribute(contentArr)}"
+											labelField="name"/>
+						<s:Label width="140" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00033')}"/>
+						<gokei:FilterComBox id="operator2" width="110" dataProvider="{copyAttribute(operatorList)}"
+											labelField="name"/>
+						<s:Label width="90" height="25" styleName="myStyle" text="{ResourceManager.getInstance().getString('ViewerStrings','I00041')}"/>
+						<gokei:FilterComBox id="repairman2" width="110" dataProvider="{copyAttribute(repairmanList)}"
+											labelField="name"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00042')}" click="queryWarning(2)"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','I00043')}" click="clear()"/>
+					</s:HGroup>
+					</s:VGroup>
+					</s:Scroller>
+					<s:DataGrid id="dataGrid2" y="110" width="100%" height="220"
+								dataProvider="{waringListEndWaring}" gridMouseDown="selectLinkType(event)" 
+								textAlign="center">
+						<s:columns>
+							<s:ArrayCollection>
+								<s:GridColumn width="70" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00019')}" labelFunction="getWaringNo" dataField="id">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="130" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00029')}" labelFunction="getBeginDate" dataField="beginData">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="130" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00044')}"
+											  labelFunction="getRepairDate2" dataField="repairDate">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="80" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00025')}" labelFunction="getWarnType" dataField="warnType">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="80" dataField="content" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00031')}">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00032')}" labelFunction="getLocation" dataField="objectType">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="80" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00027')}"
+											  labelFunction="getOperatorName" dataField="operator">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+								<s:GridColumn width="70" headerText="{ResourceManager.getInstance().getString('ViewerStrings','I00041')}" labelFunction="getRepairman" dataField="repairman">
+									<s:headerRenderer>
+										<fx:Component>
+											<s:DefaultGridHeaderRenderer>
+												<s:labelDisplay>
+													<s:Label fontWeight="bold" horizontalCenter="0"
+															 textAlign="center"/>
+												</s:labelDisplay>
+											</s:DefaultGridHeaderRenderer>
+										</fx:Component>
+									</s:headerRenderer>
+								</s:GridColumn>
+							</s:ArrayCollection>
+						</s:columns>
+					</s:DataGrid>
+					<s:HGroup y="335" left="20" width="100%">
+						<s:HGroup width="50%" horizontalAlign="left">
+							<s:DropDownList id="repairLinkComboBox" width="100" height="22"
+											prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" labelField="name"/>
+							<s:Button id="linkBtn2" label="{ResourceManager.getInstance().getString('ViewerStrings','I00035')}" click="link()"/>
+							<s:Button id="historyExportBtn" visible="{exportHistoryAuth}" label="导出"
+									  click="exportExcel()" enabled="{recordCount2 == 0 ? false : true}"/>
+						</s:HGroup>
+						<s:HGroup width="50%" horizontalAlign="right">
+							<pading:QueryPage id="page2"  alarmWidget="{this}"/>
+						</s:HGroup>
+					</s:HGroup>
+				</s:Group>
+				</s:Scroller>
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

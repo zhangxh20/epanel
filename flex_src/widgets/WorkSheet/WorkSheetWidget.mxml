@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*" 
+				   xmlns:pageContent="widgets.WorkSheet.pageContent.*" widgetConfigLoaded="checkAuth()">
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace viewer "com.esri.viewer.*";
+		@namespace gokei "widgets.WiringSheet.*";
+		.headText{
+			color:#ffffff;
+			fontWeight:bold;
+			fontFamily:"{ResourceManager.getInstance().getString('ViewerStrings','Font002')}"
+		}
+	</fx:Style>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.esri.viewer.ViewerContainer;
+			import com.gokei.entitys.UserInfo;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.IndexChangedEvent;
+			import mx.resources.ResourceManager;
+			
+			public var flag:String = ""; //控制表格的数据源
+			public var checkPageToPage1:Boolean;//tabNavigator 改变时 调度
+			public var checkPageToPage4:Boolean;
+			
+			[Bindable]
+			public var executeAuth:Boolean; //控制执行按钮的显示
+			[Bindable]
+			public  var sendAuth:Boolean;//控制发生按钮的显示
+			[Bindable]
+			public var delInitAuth:Boolean; //控制制单页面删除按钮
+			[Bindable]
+			public var delNoCompletedAuth:Boolean;
+			
+			
+			//判断是否有导出自己或导出全部的权限  
+			//1、制单界面  导出自己：exportAuth1 = exportOwnInit 导出全部： exportAuth1 = exportInit
+			//2、未完成页面  导出自己： exportAuth2 = exportOwnNoCompleted 导出全部： exportAuth2 = exportNoCompleted
+			//3、已完成页面  导出自己： exportAuth3 = exportOwnCompleted 导出全部： exportAuth3 = exportCompleted
+			//4、历时界面  导出自己： exportAuth4 = exportOwnHis 导出全部： exportAuth4 = exportHis
+			public var exportAuth1:String = "";
+			public var exportAuth2:String = "";
+			public var exportAuth3:String = "";
+			public var exportAuth4:String = "";
+			[Bindable]
+			public var exportVisable1:Boolean; //控制导出按钮的显示
+			[Bindable]
+			public var exportVisable2:Boolean; //控制导出按钮的显示
+			[Bindable]
+			public var exportVisable3:Boolean; //控制导出按钮的显示
+			[Bindable]
+			public var exportVisable4:Boolean; //控制导出按钮的显示
+			private var pageIndex :int = 0; //制单页面
+			
+			
+			//获取当前登录者
+			public var userInfo:UserInfo = ViewerContainer.getInstance().switchManager.userInfo;
+			//获取当前登陆者的权限集合
+			public var authList:ArrayCollection = userInfo.roleInfo.authIdList as ArrayCollection;
+			public var xml:XML;
+			private function checkAuth():void{
+				var i:int = 0;
+				for each(xml in configXML.buttons.button){
+					//是否有查看自己的工作单的权限
+					if(xml.@name == "queryOwnWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								flag = "false";
+								break ;
+							}
+						}
+					}
+					
+					//是否有查看全部的工作单的权限
+					if(xml.@name == "queryWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								flag = "true";
+								break ;
+							}
+						}
+					}
+					
+					//是否有发送工作单的权限
+					if(xml.@name == "sendWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								sendAuth = true;
+								break ;
+							}
+						}
+					}
+					
+					//是否有删除工作单的权限（制单页面）
+					if(xml.@name == "deleteCreatedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								delInitAuth = true;
+								break ;
+							}
+						}
+					}
+					//是否有执行工作单的权限
+					if(xml.@name == "executeWorkSheeet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								executeAuth = true;
+								break ;
+							}
+						}
+					}
+					//是否有删除工作单的权限（未完成页面）
+					if(xml.@name == "deleteUnfinishedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								delNoCompletedAuth = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出自己的工作单（制单页面）
+					if(xml.@name == "exportOwnCreatedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth1 = "exportOwnInit";
+								exportVisable1 = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出全部工作单（制单页面）
+					if(xml.@name == "exportCreatedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth1 = "exportInit";
+								exportVisable1 = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出自己的工作单（已完成页面）
+					if(xml.@name == "exportOwnFinishedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth3 = "exportOwnCompleted";
+								exportVisable3 = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出全部工作单（已完成页面）
+					if(xml.@name == "exportFinishedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth3 = "exportCompleted";
+								exportVisable3 = true;
+								break ;
+							}
+						}
+					}
+
+					// 是否有导出自己的工作单（未完成页面）
+					if(xml.@name == "exportOwnUnfinishedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth2 = "exportOwnNoCompleted";
+								exportVisable2 = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出全部工作单（未完成页面）
+					if(xml.@name == "exportUnfinishedWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth2 = "exportNoCompleted";
+								exportVisable2 = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出自己的工作单（历史页面）
+					if(xml.@name == "exportOwnHistoryWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth4 = "exportOwnHis";
+								exportVisable4 = true;
+								break ;
+							}
+						}
+					}
+					// 是否有导出全部工作单（历史页面）
+					if(xml.@name == "exportHistoryWorkSheet"){
+						for(i = 0;i<authList.length;i++){
+							if(xml.@id == authList.getItemAt(i)){
+								exportAuth4 = "exportHis";
+								exportVisable4 = true;
+								break ;
+							}
+						}
+					}
+				}
+				grid1.init();
+				group1.init();
+				wt.resizable = false;
+			}
+	
+			private function tabChange(event:IndexChangedEvent):void{
+				var index:String = event.newIndex.toString();
+				pageIndex = int(index) ;
+				switch(index)
+				{
+					case "0":
+						checkPageToPage1 = true; 
+						if(butGroup1.export1 != null)
+//							butGroup1.export1.label = "导出";
+							butGroup1.export1.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+						break;
+					case "1":
+						checkPageToPage1 = true; //第一页切换到第二页
+						if(butGroup2.export2 != null)
+//						butGroup2.export2.label = "导出";
+						butGroup2.export2.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+						break;
+					case "2":
+						checkPageToPage1 = true; 
+						if(butGroup3.export3 != null)
+//						butGroup3.export3.label = "导出";
+						butGroup3.export3.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+					break;
+					case "3":
+						checkPageToPage4 = true;//切换到历史界面时
+						if(butGroup4.export4 != null)
+//						butGroup4.export4.label = "导出";
+						butGroup4.export4.label = ResourceManager.getInstance().getString("ViewerStrings","I00012");
+						break;
+					default:
+				}
+			}
+			
+			private function wt_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt.resizable = false;},200);
+				switch(pageIndex)
+				{
+					case 0:
+						if (!grid1.queryPage.clickBtn) {
+							//如果点击了确定 上一页 下一页按钮 则numinput不清空
+							grid1.queryPage.numInput.text = "";
+						}
+						break;
+					case 1:
+						if (!grid2.queryPage.clickBtn) {
+							grid2.queryPage.numInput.text = "";
+						}
+						break;
+					case 2:
+						if (!grid3.queryPage.clickBtn) {
+							grid3.queryPage.numInput.text = "";
+						}
+						break;
+					case 3:
+						if (!grid4.queryPage.clickBtn) {
+							grid4.queryPage.numInput.text = "";
+						}
+						break;
+					default:
+						break;
+				}
+			}
+			
+			protected function wt_closedHandler(event:Event):void
+			{
+				grid1.judgeRemote(0);
+				if(grid2){grid2.judgeRemote(1);}
+				if(grid3){grid3.judgeRemote(2);}
+				if(grid4){grid4.judgeRemote(3);}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<viewer:WidgetTemplate id="wt" width="1290" height="490"  fontFamily="{ResourceManager.getInstance().getString('ViewerStrings','Font002')}" open="wt_openHandler(event)" closed="wt_closedHandler(event)">
+		<mx:TabNavigator width="1238" height="434" backgroundColor="#353535" change="tabChange(event)">
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00337')}" >
+				<s:Group left="10" top="5" right="10" bottom="10">
+					<pageContent:QueryGroup id="group1" width="100%" height="90" currentState="init" groupIndex="0" wsw="{this}"/>
+					<pageContent:WorkSheetDataGrid id="grid1" width="100%" height="100" currentState="init" pageIndex="0" wsw="{this}"/>
+					<pageContent:ButtonGroup id="butGroup1" x="20" y="360" currentState="init" wsw="{this}"/>
+				</s:Group>
+			</s:NavigatorContent>
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00338')}">
+				<s:Group left="10" top="5" right="10" bottom="10">
+					<pageContent:QueryGroup id="group2" width="100%" height="90" currentState="noCompleted" groupIndex="1" wsw="{this}"/>
+					<pageContent:WorkSheetDataGrid id="grid2" width="100%" currentState="noCompleted" pageIndex="1" wsw="{this}"/>
+					<pageContent:ButtonGroup id="butGroup2" x="20" y="360" currentState="noCompleted" wsw="{this}"/>
+				</s:Group>
+			</s:NavigatorContent>
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00339')}">
+				<s:Group left="10" top="5" right="10" bottom="10">
+					<pageContent:QueryGroup id="group3" width="100%" height="90" currentState="completed" groupIndex="2" wsw="{this}"/>
+					<pageContent:WorkSheetDataGrid id="grid3" width="100%" currentState="completed" pageIndex="2" wsw="{this}"/>
+					<pageContent:ButtonGroup id="butGroup3" x="20" y="360" currentState="completed" wsw="{this}"/>
+				</s:Group>
+			</s:NavigatorContent>
+			<s:NavigatorContent width="100%" height="100%" label="{ResourceManager.getInstance().getString('ViewerStrings','T00340')}">
+				<s:Group left="10" top="5" right="10" bottom="10">
+					<pageContent:QueryGroup id="group4" width="100%" height="90" currentState="history" groupIndex="3" wsw="{this}"/>
+					<pageContent:WorkSheetDataGrid id="grid4" width="100%" currentState="history" pageIndex="3" wsw="{this}"/>
+					<pageContent:ButtonGroup id="butGroup4" x="20" y="360" currentState="history" wsw="{this}"/>
+				</s:Group>
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+	</viewer:WidgetTemplate>		
+</viewer:BaseWidget>

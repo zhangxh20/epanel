@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 设备安装
+//
+// @Author zhang
+// @Version v1.0
+// @Date 2012-12
+///////////////////////////////////////////////////////////////////////////
+-->
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009" 
+					xmlns:s="library://ns.adobe.com/flex/spark" 
+					xmlns:mx="library://ns.adobe.com/flex/mx"
+					xmlns:viewer="com.esri.viewer.*"
+					xmlns:gokei="widgets.CabinetManager.*"
+					layout="absolute" widgetConfigLoaded="configLoaded()">
+
+	<fx:Script>
+		<![CDATA[
+			import com.gokei.managers.HashTableManager;
+			import mx.resources.ResourceManager;
+			
+			private function configLoaded():void {
+				HashTableManager.instance.put("companyId",configXML.company);
+				HashTableManager.instance.put("editable",configXML.editable);
+			}
+			
+		]]>
+	</fx:Script>
+	<viewer:WidgetTemplate id="widgetTemp" x="3" y="2" width="1210" height="400"  >
+		<mx:TabNavigator id="tn"   width="100%" height="100%"  alpha="0.7" paddingTop="0" backgroundAlpha="0">
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00132')}"  >
+				<gokei:EquipmentNew />
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00133')}"  >
+				<gokei:EquipmentBuild />
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

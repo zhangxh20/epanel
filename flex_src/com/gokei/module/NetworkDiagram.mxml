@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Module xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		  xmlns:s="library://ns.adobe.com/flex/spark" 
+		  xmlns:mx="library://ns.adobe.com/flex/mx"
+		  xmlns:visualizer="fr.kapit.visualizer.*"
+		  width="100%" height="100%" backgroundColor="0xffffff" backgroundAlpha="1">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="cabinetRelationService" fault="onFault(event)">
+			<s:method name="getRelationXML" result="loadRelationXML(event)" />
+			<s:method name="getCableRelationXML" result="loadRelationXML(event)" />
+		</s:RemoteObject>
+		<s:RadioButtonGroup id="rbg" change="onChange()"/>
+		<s:SolidColorStroke id="scs" weight="15" color="0xf5f5f5" />
+	</fx:Declarations>
+	
+	<fx:Metadata>
+		[ResourceBundle("ViewerStrings")]
+	</fx:Metadata>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import fr.kapit.visualizer.events.VisualizerEvent;
+			import mx.resources.ResourceManager;
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			[Bindable]
+			private var xml:XML;
+			[Bindable]
+			private var layouts:ArrayCollection = new ArrayCollection([
+//				{type:"forceDirected",name:"布局1"},
+//				{type:"hierarchicalCyclic",name:"布局2"},
+//				{type:"hierarchicalTree",name:"布局3"},
+//				{type:"mindMap",name:"布局4"},
+//				{type:"pack",name:"布局5"},
+//				{type:"radial",name:"布局6"},
+//				{type:"rectanglePack",name:"布局7"},
+//				{type:"singleCircular",name:"布局8"}
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00002")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00002")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00003")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00004")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00005")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00006")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00007")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00008")},
+//				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00009")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00003")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00004")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00005")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00006")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00007")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00008")},
+				{type:"forceDirected",name:ResourceManager.getInstance().getString("ViewerStrings","T00009")},
+			]);
+			
+			public function onChange():void {
+				var type:int = int(rbg.selectedValue);
+				if (type == 0) {
+					remote.getRelationXML();
+				} else if (type == 1) {
+					remote.getCableRelationXML(true);
+				} else if (type == 2) {
+					remote.getCableRelationXML(false);
+				}
+			}
+			
+			private function loadRelationXML(event:ResultEvent):void {
+				xml = new XML(event.result);
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+						//登录超时，请重新登录！","提示"
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<visualizer:Visualizer id="vis" width="100%" height="100%" layout="forceDirected" nodeLabelFields="code" dataProvider="{xml}" 
+						  nodeRendererClass="com.gokei.components.NodeRenderer"/>
+	<s:Rect right="-10" left="-10" top="0" bottom="0" stroke="{scs}"/>
+	<s:Panel right="5" width="150" height="140" top="50">
+		<s:layout>
+			<s:VerticalLayout horizontalAlign="center"/>
+		</s:layout>
+			<s:RadioButton label="{ResourceManager.getInstance().getString('ViewerStrings','T00011')}" groupName="rbg" value="0" />
+			<s:RadioButton label="{ResourceManager.getInstance().getString('ViewerStrings','T00012')}" groupName="rbg" value="1" />
+			<s:RadioButton label="{ResourceManager.getInstance().getString('ViewerStrings','T00013')}" groupName="rbg" value="2" />
+		<s:HGroup verticalAlign="bottom">
+			<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00010')}" height="18"/>
+			<s:DropDownList id="layoutType" dataProvider="{layouts}" width="100" labelField="name" selectedIndex="0" change="vis.layout = layoutType.selectedItem.type"/>
+		</s:HGroup>
+	</s:Panel>
+</s:Module>

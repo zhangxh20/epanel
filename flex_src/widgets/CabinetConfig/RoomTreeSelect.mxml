@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009" 
+						 xmlns:s="library://ns.adobe.com/flex/spark" 
+						 xmlns:mx="library://ns.adobe.com/flex/mx" 
+						 xmlns:gokei="com.gokei.components.*"
+						 xmlns:tree="widgets.Tree.*" 
+						 width="320" height="400" title="{ResourceManager.getInstance().getString('ViewerStrings','T00128')}"
+						 creationComplete="init()" close="PopUpManager.removePopUp(this)">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="getSpaceGraphXMLByCompanyId" result="loadTree(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			private var expand:Boolean;
+			
+			private var xml:XML;
+			[Bindable]
+			private var xmlList:XMLList;
+			
+			private var companyId:int;
+			
+			public var cabinetEdit:CabinetEdit;
+			
+			public var isRoom:Boolean;
+			
+			private function init():void{
+				companyId = int(HashTableManager.instance.get("companyId"));
+				remote.getSpaceGraphXMLByCompanyId(companyId,false);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function refresh(event:AppEvent):void {
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[12] == item) {
+						remote.getSpaceGraphXMLByCompanyId(companyId,false);
+						break;
+					}
+				}
+			}
+			
+			private function loadTree(event:ResultEvent):void {
+				var xmlStr:String = event.result as String;
+				xml = new XML(xmlStr);
+				xmlList = new XMLList(xml);
+				tree.callLater(function():void{
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+				});
+			}
+			
+			public function expandTree():void {
+				tree.selectedIndex = 0;
+				tree.expandItem(tree.selectedItem,true);
+			}
+			
+			protected function tbClick():void{
+				if(expand){
+					expand = false;
+//					tb.toolTip = '展开';
+					tb.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00129");
+					tb.source = "assets/images/closeX.png";
+					tree.expandChildrenOf(xml,false);
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+				}else{
+					expand = true;
+//					tb.toolTip = '收缩';
+					tb.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00130");
+					tb.source = "assets/images/expand.png";
+					tree.expandChildrenOf(xml,true);
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			private function iconfunc(item:Object):Class {
+				return CommonUtil.iconfunc(item);
+			}
+			
+			private function labelfunc(item:Object):String {
+				return CommonUtil.labelfunc(item,"room");
+			}
+			
+			private function treeClick():void {
+				var xml:XML = tree.selectedItem as XML;
+				var obj:Object = new Object();
+				if(isRoom){
+					// ------------ 只能选择房间------------
+					if (xml.@type == "room") {
+						obj.roomId = xml.@ID + "";
+						obj.roomName = xml.@name + "";
+						obj.areaId = xml.parent().@ID + "";
+						obj.areaName = xml.parent().@name + "";
+						cabinetEdit.roomFloorSelect(obj);
+						PopUpManager.removePopUp(this);
+					}
+				} else {
+					// ------------ 只能选择楼层区域 -------------
+					if(xml.@type == "area") {
+						obj.areaId = xml.@ID + "";
+						obj.areaName = xml.@name + "";
+						cabinetEdit.roomFloorSelect(obj);
+						PopUpManager.removePopUp(this);
+					} 
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:Group left="5" right="5" top="3" bottom="3">
+		<s:HGroup width="100%" horizontalAlign="right" verticalAlign="middle" paddingRight="0" y="0">
+			<s:Image id="tb" width="45" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00129')}" click="tbClick()" source="assets/images/closeX.png" buttonMode="true"/>
+		</s:HGroup>
+		
+		<tree:AutoSizeTree y="20" id="tree" width="300" height="320" dataProvider="{xmlList}"
+						   horizontalScrollPolicy="auto" iconFunction="iconfunc" doubleClickEnabled="true"
+						   itemDoubleClick="treeClick()" labelField="@name" showRoot="false">
+		</tree:AutoSizeTree>
+		
+		<s:Label width="100%" height="5%" fontWeight="bold" text="{ResourceManager.getInstance().getString('ViewerStrings','T00131')}" textAlign="left"
+				 verticalAlign="middle" y="340"/>
+	</s:Group>
+</gokei:TitleWindowX>

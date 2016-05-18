@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009" 
+			   xmlns:s="library://ns.adobe.com/flex/spark" 
+			   xmlns:mx="library://ns.adobe.com/flex/mx" 
+			   xmlns:gokei="com.gokei.components.*"
+			   xmlns:productImage="widgets.CabinetManager.ProductImage.*"
+			   width="500" height="330" title="{ResourceManager.getInstance().getString('ViewerStrings','I00078')}"
+			   close="PopUpManager.removePopUp(this)" creationComplete="init()"
+			   >
+	<fx:Declarations>
+		<s:RemoteObject id="fsRemote" destination="fileService" fault="onFault(event)">
+			<s:method name="downloadFile" result="downloadFileResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.CabinetManager.productsComponent.AddProducts;
+			
+			private var opt:int;
+			
+			private var timer:Timer = new Timer(1);
+			
+			public var addProduct:AddProducts;
+			
+			[Bindable]
+			private var imageList:ArrayCollection ;
+			
+			private function init():void {
+				fsRemote.downloadFile();
+				timer.addEventListener(TimerEvent.TIMER,onTimer);
+				AppEvent.addListener("addImageSucc", updateList);
+			}
+			private function updateList(event:AppEvent):void{
+				fsRemote.downloadFile();
+			}
+			
+			private function onTimer(event:TimerEvent):void {
+				var rightScroll:int = 75 * imageList.length - 370;
+				if (opt == 0) {
+					if (imgList.scroller.viewport.horizontalScrollPosition <= 0) {
+						imgList.scroller.viewport.horizontalScrollPosition = 0;
+						timer.stop();
+						return;
+					}
+					imgList.scroller.viewport.horizontalScrollPosition -= 10;
+				} else {
+					if (imgList.scroller.viewport.horizontalScrollPosition >= rightScroll) {
+						imgList.scroller.viewport.horizontalScrollPosition = rightScroll;
+						timer.stop();
+						return;
+					}
+					imgList.scroller.viewport.horizontalScrollPosition += 10;
+				}
+			}
+			
+			private function selectChange():void {
+				img.source = imgList.selectedItem.nameSave;
+				lab.text = imgList.selectedItem.keyWord;
+			}
+			
+			private function scroll(value:int):void {
+				opt = value;
+				timer.start();
+			}
+			
+			private function imageSelect():void {
+				addProduct.img = imgList.selectedItem.nameSave;
+				PopUpManager.removePopUp(this);
+			}
+			
+			protected function downloadFileResult(event:ResultEvent):void{
+				imageList = event.result as ArrayCollection;
+			}
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<gokei:layout>
+		<s:VerticalLayout horizontalAlign="center">
+		</s:VerticalLayout>
+	</gokei:layout>
+	<s:Label />
+	<s:Image id="img" width="300" height="160" click="imageSelect()" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','I00079')}" useHandCursor="true" buttonMode="true" mouseChildren="false"/>
+	<s:Label id="lab" />
+	<s:HGroup verticalAlign="middle">
+		<s:Image width="40" source="assets/images/i_zoomprevious.png" useHandCursor="true" buttonMode="true" mouseDown="scroll(0)" mouseUp="timer.stop()"/>
+		<s:List id="imgList" width="380" height="85" itemRenderer="widgets.CabinetManager.productsImage.ImageItemRender" dataProvider="{imageList}"
+				interactionMode="touch" verticalScrollPolicy="off" change="selectChange()">
+			<s:layout>
+				<s:TileLayout horizontalAlign="center" paddingBottom="5" paddingLeft="5" paddingRight="5" paddingTop="5" orientation="columns" />
+			</s:layout>
+		</s:List>
+		<s:Image width="40" source="assets/images/i_zoomnext.png" useHandCursor="true" buttonMode="true" mouseDown="scroll(1)" mouseUp="timer.stop()"/>
+	</s:HGroup>
+</gokei:TitleWindowX>

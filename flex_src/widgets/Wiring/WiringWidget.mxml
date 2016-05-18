@@ -1,0 +1,346 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2012 GOKEI. All Rights Reserved.
+//
+// 配线工具
+//
+// @Author zhang
+// @Version v1.0
+// @Date 2012-09
+///////////////////////////////////////////////////////////////////////////
+-->
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009" 
+				   xmlns:s="library://ns.adobe.com/flex/spark" 
+				   xmlns:mx="library://ns.adobe.com/flex/mx" xmlns:viewer="com.esri.viewer.*"
+				   creationComplete="init()"
+				 >
+	<fx:Declarations>
+		<!-- Place non-visual elements (e.g., services, value objects) here -->
+		<s:RemoteObject id="wsremote" destination="workSheetService" fault="onFault(event)">
+			<s:method name="makeWireSheetX" result="makeWireSheetResult(event)" />
+		</s:RemoteObject>
+		<s:RemoteObject id="wireRemote" destination="wireService" fault="onFault(event)">
+			<s:method name="autoWire" result="autoWireResult(event)" />
+		</s:RemoteObject>
+	</fx:Declarations>
+	<fx:Style>
+		@namespace s "library://ns.adobe.com/flex/spark";
+		@namespace mx "library://ns.adobe.com/flex/mx";
+		@namespace viewer "com.esri.viewer.*";
+		@namespace gokei "widgets.WiringSheet.*";
+		.headText{
+			color:#ffffff;
+			fontWeight:bold;
+			fontFamily:"{ResourceManager.getInstance().getString('ViewerStrings','Font002')}"
+		}
+	</fx:Style>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			private var first:Boolean = true;
+			
+			private var portid1:int;
+			
+			private var portid2:int;
+			
+			private var firstLinetype:String;
+			
+			private var currentInfo:TextInput;
+			
+			[Bindable]
+			private var vec : Vector.<int>;
+			
+			[Bindable]
+			private var dataList:ArrayCollection = new ArrayCollection([
+//				{name:"info",label:"查询",thumbnail:"assets/images/i_find.png"},
+//				{name:"link",label:"关联",thumbnail:"assets/images/i_link.png"},
+//				{name:"add",label:"增加",thumbnail:"assets/images/i_add.png"},
+//				{name:"remove",label:"删除",thumbnail:"assets/images/i_remove.png"},
+//				{name:"modify",label:"变更",thumbnail:"assets/images/i_modify.png"},
+//				{name:"change",label:"换线",thumbnail:"assets/images/i_change.png"},
+//				{name:"auto",label:"自动",thumbnail:"assets/images/i_auto.png"}
+				{name:"info",label:ResourceManager.getInstance().getString("ViewerStrings","I00042"),thumbnail:"assets/images/i_find.png"},
+				{name:"link",label:ResourceManager.getInstance().getString("ViewerStrings","T00299"),thumbnail:"assets/images/i_link.png"},
+				{name:"add",label:ResourceManager.getInstance().getString("ViewerStrings","T00300"),thumbnail:"assets/images/i_add.png"},
+				{name:"remove",label:ResourceManager.getInstance().getString("ViewerStrings","T00052"),thumbnail:"assets/images/i_remove.png"},
+				{name:"modify",label:ResourceManager.getInstance().getString("ViewerStrings","T00301"),thumbnail:"assets/images/i_modify.png"},
+				{name:"change",label:ResourceManager.getInstance().getString("ViewerStrings","T00302"),thumbnail:"assets/images/i_change.png"},
+				{name:"auto",label:ResourceManager.getInstance().getString("ViewerStrings","T00303"),thumbnail:"assets/images/i_auto.png"}
+			]);
+			
+			/**
+			 * 状态按钮改变
+			 */ 
+			private function optChange():void {
+				clear();
+				AppEvent.dispatch(EventType.WIRING_OPT,operation.selectedItem.name);
+				for each(var index : int in vec){
+					if (index == operation.selectedIndex) {
+						btn.enabled = true;
+						break ;
+					} else { 
+						btn.enabled = false;
+					}
+				}
+			}
+			
+			
+			private function init():void  {
+				wt.resizable = false;
+				AppEvent.addListener(EventType.PORT_SELECT,portSelect);
+				AppEvent.addListener(EventType.ADDCABLE_CANCEL,function(event:AppEvent):void{
+					clear();
+				});
+				clear();
+				operation.selectedIndex = 0;
+				vec = new Vector.<int>;
+				vec.push(2,3,4,5,6);
+			}
+			
+			/**
+			 * 清除
+			 */ 
+			private function clear():void {
+				firstCabinet.text = "";
+				firstPort.text = "";
+				firstInfo.text = "";
+				secondCabinet.text = "";
+				secondPort.text = "";
+				secondInfo.text = "";
+				first = true;
+			}
+			
+			/**
+			 * 
+			 * 如果textinput里没有内容，不能够取消 ，除了查询。
+			 * */
+			private function cancel():void{
+				if(operation.selectedItem.name == "info" || firstCabinet.text != ""){
+					AppEvent.dispatch(EventType.ADDCABLE_CANCEL);
+				}
+				clear();
+			}
+			
+			private function portSelect(event:AppEvent):void {
+				var portInfo:Object = event.data;
+				if(portInfo.doubleCabinet && first == false){
+					portInfo.portIndex = 1;
+				}
+				if (portInfo.portIndex == 0) {
+					portid1 = portInfo.id;
+					firstLinetype = portInfo.linetype;
+					firstCabinet.text = portInfo.cabinetCode;
+					firstPort.text = portInfo.uNo + "-" + portInfo.portCode;
+					firstInfo.text = portInfo.infoCode;
+					first = false;
+					if (operation.selectedIndex == 6) {
+						wireRemote.autoWire(portid1,single.selected);
+					}
+				} else {
+					if (firstLinetype != portInfo.linetype)return;
+					portid2 = portInfo.id;
+					secondCabinet.text = portInfo.cabinetCode;
+					secondPort.text = portInfo.uNo + "-" + portInfo.portCode;
+					secondInfo.text = portInfo.infoCode;
+					first = true;
+				} 
+			}
+			
+			private function getBackTargetResult(event:ResultEvent):void {
+				currentInfo.text = event.result == null? "" :event.result.code;
+			}
+			
+			private function autoWireResult(event:ResultEvent):void {
+				if (event.result == null) {
+					cancel();
+					return;
+				}
+				var obj:Object = new Object();
+				obj.cabinetCode = firstCabinet.text;
+				obj.uNo = event.result.uNo;
+				obj.portCode = event.result.portCode;
+				AppEvent.dispatch(EventType.PORT_STATUS_LINK,obj);
+				var data:Object = {arr:[EventType.REFRESH_ID[3],EventType.REFRESH_ID[13]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			
+			/**
+			 * 确定
+			 */ 
+			private function wiringOK():void {
+				if (operation.selectedIndex < 2) {
+					return;
+				} else {
+					if (secondCabinet.text == "") {
+						return;
+					}
+				}
+				//配线管理是添加配线操作
+				if(operation.selectedItem.name == "add"){
+					//如果没有点击跨机柜配线
+					if(firstCabinet.text != secondCabinet.text){
+						if(!dc.selected){
+//							Alert.show("起始端口和目标端口不在同一个机柜,请点击跨机柜配线","提示");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00130"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+							AppEvent.dispatch(EventType.ADDCABLE_CANCEL);
+							return ;
+						}
+					}
+				}
+				if (operation.selectedItem.name != "auto") {
+					wsremote.makeWireSheetX(portid1,portid2,(operation.selectedIndex-2).toString());
+				} else {
+					wsremote.makeWireSheetX(portid1,portid2,"0");
+				}
+				
+			}
+			
+			/**
+			 * 生成配线单成功
+			 */ 
+			private function makeWireSheetResult(event:ResultEvent):void {
+				if (event.result == 1) {
+					AppEvent.dispatch(EventType.ADDCABLE_OK);
+					var data:Object = {arr:[EventType.REFRESH_ID[3],EventType.REFRESH_ID[13]]};
+					AppEvent.dispatch(EventType.REFRESH,data);
+					AppEvent.dispatch(EventType.WIRING_WORK_NUM);
+					clear();
+				} else {
+					switch (event.result) {
+						case -1 :
+//							Alert.show("配线失败");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00046"));
+							break;
+						case -2: 
+//							Alert.show("端口已配单");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00131"));
+							break;
+						case -3: 
+//							Alert.show(" 端口不可用（背部没打线）");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00132"));
+							break;
+						case -4 : 
+//							Alert.show("端口告警");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00133"));
+							break;
+						case -5 : 
+//							Alert.show("端口已插线，无法增加跳线");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00134"));
+							break;
+						case -6: 
+//							Alert.show(" 端口未插线，无法删除跳线");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00083"));
+							break;
+						case -7 : 
+//							Alert.show("端口类型不同");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00084"));
+							break;
+						case -8: 
+//							Alert.show(" 普通配线架之间无法生成配线单");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00085"));
+							break;
+						case -9 : 
+//							Alert.show("配线架的上层控制器未被激活");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00086"));
+							break;
+					}
+				}
+			}
+			
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+			private function dcChange():void {
+				AppEvent.dispatch(EventType.DOUBLE_CABINET,dc.selected);
+				AppEvent.dispatch(EventType.ADDCABLE_CANCEL);
+				clear()
+			}
+			private function wt1_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt.resizable = false;},200);
+			}
+			
+		]]>
+	</fx:Script>
+	<viewer:WidgetTemplate id="wt" width="560" height="240" open="wt1_openHandler(event)">
+		<viewer:layout>
+			<s:VerticalLayout />
+		</viewer:layout>
+		<s:List id="operation" width="100%" borderVisible="false" dataProvider="{dataList}"
+				itemRenderer="widgets.Wiring.OperationItemRenderer"
+				requireSelection="true" change="optChange()">
+			<s:layout>
+				<s:TileLayout horizontalAlign="center" paddingBottom="10" paddingLeft="10" paddingRight="10" paddingTop="10"
+							  requestedColumnCount="7"/>
+			</s:layout>
+		</s:List>
+		<s:Group width="100%" enabled="{operation.selectedIndex != 0}">
+			<s:Group width="100%" enabled="{operation.selectedIndex != 0}">
+				<s:Group width="100%" enabled="{operation.selectedIndex != 0}">
+					<s:layout>
+						<s:VerticalLayout/>
+					</s:layout>
+					<s:HGroup width="100%" horizontalAlign="center" enabled="{operation.selectedIndex != 0}">
+						<s:Label  fontSize="14" text="{ResourceManager.getInstance().getString('ViewerStrings','T00176')}"/>
+						<s:TextInput id="firstCabinet"  width="70" editable="false"/>
+						<s:Label  fontSize="14" text="{ResourceManager.getInstance().getString('ViewerStrings','T00086')}"/>
+						<s:TextInput id="firstPort"  width="70" editable="false"/>
+						<s:Label  fontSize="14" text="{ResourceManager.getInstance().getString('ViewerStrings','T00094')}"/>
+						<s:TextInput id="firstInfo"  width="90" editable="false"/>
+					</s:HGroup>
+					<s:HGroup width="100%" horizontalAlign="center"  enabled="{operation.selectedIndex != 0}">
+						<s:Label  fontSize="14" text="{ResourceManager.getInstance().getString('ViewerStrings','T00176')}"/>
+						<s:TextInput id="secondCabinet" width="70" editable="false"/>
+						<s:Label  fontSize="14" text="{ResourceManager.getInstance().getString('ViewerStrings','T00086')}"/>
+						<s:TextInput id="secondPort"  width="70" editable="false"/>
+						<s:Label  fontSize="14" text="{ResourceManager.getInstance().getString('ViewerStrings','T00094')}"/>
+						<s:TextInput id="secondInfo"  width="90" editable="false"/>
+					</s:HGroup>
+				</s:Group>
+			</s:Group>
+		</s:Group>
+		
+		<s:HGroup width="100%" horizontalAlign="center" gap="12">
+			<s:CheckBox id="linkChain" label="{ResourceManager.getInstance().getString('ViewerStrings','T00304')}" enabled="{operation.selectedIndex == 0}" change="AppEvent.dispatch(EventType.LINK_CHAIN,linkChain.selected);"/>
+			<s:CheckBox id="locus" label="{ResourceManager.getInstance().getString('ViewerStrings','T00305')}" enabled="{operation.selectedIndex == 1}" change="AppEvent.dispatch(EventType.LOCUS_RECORD,locus.selected);"/>
+			<s:CheckBox id="dc" label="{ResourceManager.getInstance().getString('ViewerStrings','T00306')}" enabled="{operation.selectedIndex == 2}" change="dcChange()"/>
+			<s:CheckBox id="single" label="{ResourceManager.getInstance().getString('ViewerStrings','T00307')}" enabled="{operation.selectedIndex == 6}" />
+			<s:HGroup>
+				<s:HGroup>
+					<s:HGroup>
+						<s:Button id="btn" label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="wiringOK()" enabled="false"/>
+						<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+					</s:HGroup>
+				</s:HGroup>
+			</s:HGroup>
+		</s:HGroup>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>

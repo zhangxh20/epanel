@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+
+<s:SparkSkin xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		xmlns:s="library://ns.adobe.com/flex/spark" 
+    xmlns:fb="http://ns.adobe.com/flashbuilder/2009" 
+	alpha.disabled="0.5" xmlns:graphic="widgets.CabinetManager.graphic.*">
+
+    <fx:Metadata>
+    <![CDATA[ 
+        /** 
+         * @copy spark.skins.spark.ApplicationSkin#hostComponent
+         */
+        [HostComponent("widgets.CabinetManager.productsComponent.AddProducts")]
+    ]]>
+    </fx:Metadata> 
+    
+    <fx:Script fb:purpose="styling">
+        <![CDATA[         
+            /**
+             *  @private
+             */
+            override protected function updateDisplayList(unscaledWidth:Number, unscaledHeight:Number) : void
+            {
+                // Push backgroundColor and backgroundAlpha directly.
+                // Handle undefined backgroundColor by hiding the background object.
+                if (isNaN(getStyle("backgroundColor")))
+                {
+                    background.visible = false;
+                }
+                else
+                {
+                    background.visible = true;
+                   // bgFill.color = getStyle("backgroundColor");
+                   // bgFill.alpha = getStyle("backgroundAlpha");
+                }
+                
+                super.updateDisplayList(unscaledWidth, unscaledHeight);
+            }
+        ]]>        
+    </fx:Script>
+    
+    <s:states>
+		<s:State name="disabledWithControlBar"/>
+		<s:State name="normalWithControlBar"/>
+        <s:State name="normal" />
+        <s:State name="disabled" />
+		
+    </s:states>
+    
+  
+	<graphic:myBoderDraw radius="5" mcX="{hostComponent.x+410}" mcY="{hostComponent.y+5}"
+						 mcW="720" mcH="260" >
+		<!--<graphic:fill>
+			<s:SolidColor  color.disabled="0x000000"   color="0xaAaAaA" />
+		</graphic:fill>-->
+		
+		<graphic:stroke>
+			<s:SolidColorStroke color="0xffffff" weight="2"/>
+		</graphic:stroke>
+	</graphic:myBoderDraw>
+    <s:Rect id="background" left="0" right="0" top="0" bottom="0">
+		<!-- <s:fill>
+         
+            <s:SolidColor id="bgFill" color="#FFFFFF"/>
+        </s:fill>-->
+    </s:Rect>
+	<s:Rect left="440" width="660" top="15" height="210"  radiusX="4" radiusY="4">
+		<s:fill>
+			<s:LinearGradient rotation="90">
+				<s:GradientEntry color="0xDBDBDB" alpha="0.09"/>
+				<s:GradientEntry color="0xffffff" alpha="0.15"/>
+			</s:LinearGradient>
+		</s:fill>
+	</s:Rect>
+   
+    <s:Group id="contentGroup" left="0" right="0" top="0" bottom="0" minWidth="0" minHeight="0">
+        <s:layout>
+            <s:BasicLayout/>
+        </s:layout>
+    </s:Group>
+
+</s:SparkSkin>

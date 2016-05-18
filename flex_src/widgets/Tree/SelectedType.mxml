@@ -1,0 +1,546 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009"
+		 xmlns:s="library://ns.adobe.com/flex/spark"
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 width="100%" height="100%" creationComplete="createComplete()">
+
+	<fx:Declarations>
+		<s:RemoteObject id="dataRemote" destination="assetsService" fault="onFault(event)">
+			<s:method name="getAssetsInfoByObjectTypeId" result="getDataListResult(event)"/>
+			<s:method name="getEPXJAssets" result="getDataListResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="bgRemote" destination="backgroundService" fault="onFault(event)">
+			<s:method name="addEquipmentToCabinet" result="addResult(event)"/>
+			<s:method name="getEmptyuNos" result="getuNo(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="csRemote" destination="cabinetService" fault="onFault(event)">
+			<s:method name="getCabinetByBuildingCodeAndCabinetCode" result="getCabinetId(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="bound" result="boundResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="ctRemote" destination="controllerService" fault="onFault(event)">
+			<s:method name="isControllerIpDuplicate" result="ipContDuplicateResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="clRemote" destination="collectorService" fault="onFault(event)">
+			<s:method name="isCollectorCodeOrEquCodeDuplicate" result="codeCollDuplicateResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="ssRemote" destination="shelfService" fault="onFault(event)">
+			<s:method name="isShelfAnnCodeDuplicate" result="codeShelfDuplicateResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			import widgets.CabinetManager.productsComponent.CabinetDto;
+			import widgets.CabinetManager.productsComponent.Collector;
+			import widgets.CabinetManager.productsComponent.Controller;
+			import widgets.CabinetManager.productsComponent.Shelf;
+			
+			[Bindable]
+			private var arrayCollection : ArrayCollection = new ArrayCollection();
+			[Bindable]
+			private var shelfType : ArrayCollection = new ArrayCollection([
+//				{name:"主干",type:"0"},{name:"水平",type:"1"},{name:"交换机",type:"2"}
+				{name:ResourceManager.getInstance().getString("ViewerStrings","T00149"),type:"0"},{name:ResourceManager.getInstance().getString("ViewerStrings","T00150"),type:"1"},{name:ResourceManager.getInstance().getString("ViewerStrings","T00151"),type:"2"}
+			]);
+			private var controller : Controller = new Controller();
+			private var collector:Collector = new Collector();
+			private var shelf:Shelf = new Shelf();
+			private var cabinetSelect:CabinetSelect = new CabinetSelect();
+			private var _maintainTree:MaintainTree;
+			private var type :String; //类型
+			private var obj : Object; //添加的对象
+			private var cabinetId:int;
+			private var uHoldCount:int;
+			private var bCode:String; //建筑编号
+			private var cCode:String;
+			private var uNo:String;
+			public var timer : Timer = new Timer(20000);
+			
+			private function createComplete():void{
+				AppEvent.addListener(EventType.MAIN_SELECTED_TYPE_TABLE,selectOther);
+				timer.addEventListener(TimerEvent.TIMER,timerHandler);
+			}
+			
+			private function timerHandler(event : TimerEvent):void{
+				if (timer.running) {
+					CommonUtil.stopLoading();
+					timer.stop();
+//					Alert.show("绑定失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00071"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			public function set maintainTree(value:MaintainTree):void{
+				this._maintainTree = value;
+			}
+			
+			public function selectOther(event : AppEvent):void{
+				obj = event.data;
+				cancel(0);
+				general.enabled = false;
+				shelfGroup.visible = false;
+				type = obj.type;
+				
+				bCode = obj.buildingCode;
+				cCode = obj.cabinetCode;
+				uNo = obj.uNo;
+				
+				switch(type){
+					case "controller" :
+						dataRemote.getAssetsInfoByObjectTypeId('ZNZJ');
+						break;
+					case "collector" :
+						dataRemote.getAssetsInfoByObjectTypeId('ZNCJ');
+						break;
+					case "shelf" :
+						dataRemote.getEPXJAssets();
+						shelfGroup.visible = true;
+						break;
+					default :
+						break;
+				}
+			}
+			
+			public function treeSelect(obj : Object):void{
+				selParentBt.text = obj.name;
+				selParentBt.setStyle("fontSize",12);
+				buildCode.text = obj.buildingCode;
+				cabinetId = obj.id;
+				cCode = obj.cabinetCode;
+				getEmptuNo();
+				HashTableManager.instance.put("cabinetId",cabinetId);
+			}
+			
+			private function getEmptuNo():void{
+				if(obj.type == 'controller' ){
+					bgRemote.getEmptyuNos(cabinetId,2,uHoldCount);
+				}else if(obj.type == 'collector'){
+					bgRemote.getEmptyuNos(cabinetId,1,uHoldCount);
+				}else{
+					bgRemote.getEmptyuNos(cabinetId,0,uHoldCount);
+				}
+			}
+			
+			private function getDataListResult(event:ResultEvent):void{
+				arrayCollection = event.result as ArrayCollection;
+				dataGrid.dataProvider = toLabelArray(arrayCollection);
+			}
+			
+			private function toLabelArray(list:ArrayCollection):ArrayCollection {
+				var labelList:ArrayCollection = new ArrayCollection();
+				var obj:Object;
+				for (var i:int = 0; i < list.length; i ++) {
+					obj = new Object();
+					obj.no = i+1;
+					obj.name = list.getItemAt(i).name;
+					obj.model = list.getItemAt(i).model;
+					obj.id = list.getItemAt(i).id;
+					obj.objectTypeId = list.getItemAt(i).objectTypeId;
+					obj.brand = list.getItemAt(i).brand;
+					var ai : Object = list[i];
+					for (var j:int = 0; j < ai.assetsSpecInfoList.length; j++) {	
+						var aslist:Object = ai.assetsSpecInfoList[j];
+						var str:String = aslist.name;
+						obj[str] = aslist.specValue;
+					}
+					labelList.addItem(obj);
+				}
+				return labelList;
+			}
+			
+			private function popUpSelect():void {
+				PopUpManager.addPopUp(cabinetSelect,this);
+				cabinetSelect.selectType = this;
+				cabinetSelect.x = (mouseX + cabinetSelect.width)/2;
+				cabinetSelect.y = (mouseY)/2 ;
+				cabinetSelect.init();
+				cabinetSelect.expandTree();
+			}
+			
+			
+			private function getCabinetId(event:ResultEvent):void{
+				var cabinet : CabinetDto = event.result as CabinetDto;
+				if(cabinet){
+					cabinetId = cabinet.id;
+					selParentBt.setStyle("fontSize",12);
+//					selParentBt.text = cabinet.code + "(U数:"+cabinet.uCount+")";
+					selParentBt.text = cabinet.code + ResourceManager.getInstance().getString("ViewerStrings","T00247")+cabinet.uCount+")";
+					getEmptuNo();
+				}else{
+//					selParentBt.text = "点击选择";
+					selParentBt.text = ResourceManager.getInstance().getString("ViewerStrings","I00065");
+					selParentBt.setStyle("fontSize",10);
+				}
+			}
+			
+			private function getuNo(event:ResultEvent):void {
+				var array:ArrayCollection = event.result as ArrayCollection;
+				var labelArr:ArrayCollection = new ArrayCollection();
+				for (var i:int = 0 ; i < array.length ; i++) {
+					labelArr.addItem({uNo:array.getItemAt(i),name:array.getItemAt(i) + "U",id:array.getItemAt(i)});
+				}
+				uNumCombox.dataProvider = labelArr;
+					//如果上传上来的uNo大于数据库中存在的 ,且不存在于数据库 return;
+				for (var j:int = 0 ; j < labelArr.length ; j++) {
+					if(uNo == labelArr.getItemAt(j).uNo){
+						uNumCombox.selectedIndex = j;
+						break ;
+					}
+				}
+				
+			}
+			
+			public function cancel(value : int):void{
+				if(value == 1){
+					_maintainTree.removeAll(this);
+				}
+				dataGrid.dataProvider = null;
+				general.enabled = false;
+				uNumCombox.selectedIndex = -1
+				buildCode.text = "";
+//				selParentBt.text = "点击选择";
+				selParentBt.text = ResourceManager.getInstance().getString("ViewerStrings","I00065");
+				selParentBt.setStyle("fontSize",10);
+				uNumCombox.selectedIndex = -1;
+				b2.enabled = false;
+			}
+			
+			/**
+			 * 创建设备
+			 * */
+			private function generalEqmt():void{
+				var type : String = obj.type;
+				if(buildCode.text == "" || cabinetId == 0 || uNumCombox.selectedItem == null){
+//					Alert.show("请选择机柜，所在U层！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00118"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				if(obj.type == 'shelf' && sType.selectedItem == null){
+//					Alert.show("请选择配线架类型！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00119"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				switch(type)
+				{
+					case "controller":
+						controller.cabinetId = cabinetId;
+						controller.brand = dataGrid.selectedItem.brand;
+						controller.assetsId = dataGrid.selectedItem.id;
+						controller.typeId = dataGrid.selectedItem.objectTypeId;
+						controller.productNo = dataGrid.selectedItem.model;
+						controller.uNo = uNumCombox.selectedItem.uNo;
+						controller.ip = obj.controllerIp;
+						controller.jmsId = obj.gatewayId;
+						controller.uHoldCount = int(dataGrid.selectedItem.uHoldCount);
+						controller.name = dataGrid.selectedItem.name;
+						controller.eqmtId = cCode + "-" + controller.uNo;
+						controller.code = obj.code;
+						controller.equCode = obj.equCode;
+						//判断  IP 在网关ID网关下是否冲突
+						ctRemote.isControllerIpDuplicate(String(obj.gatewayId),String(obj.controllerIp));
+						break;
+					case "collector":
+						if(obj.parent == 'no'){
+//							Alert.show('上层设备没有生成');
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00120"));
+							return ;
+						}
+						collector.cabinetId = cabinetId;
+						collector.name = dataGrid.selectedItem.name;
+						collector.controllerId = obj.parentEquipmentId;
+						collector.brand = dataGrid.selectedItem.brand;
+						collector.assetsId = dataGrid.selectedItem.id;
+						collector.productNo = dataGrid.selectedItem.model;
+						collector.uNo = uNumCombox.selectedItem.uNo;
+						collector.typeId = dataGrid.selectedItem.objectTypeId;
+						collector.equCode = obj.collectorSeqNo;
+						collector.uHoldCount =  dataGrid.selectedItem.uHoldCount;
+						collector.eqmtId = cCode + "-" + collector.uNo;
+						collector.code = obj.collectorCode;
+						clRemote.isCollectorCodeOrEquCodeDuplicate(String(obj.collectorCode),String(obj.collectorSeqNo),int(obj.parentEquipmentId));
+						break;
+					case "shelf":
+						if(obj.parent == 'no'){
+//							Alert.show('上层设备没有生成');
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00120"));
+							return ;
+						}
+						shelf.cabinetId = cabinetId;
+						shelf.name = dataGrid.selectedItem.name;
+						shelf.collectorId = obj.parentEquipmentId;
+						shelf.brand = dataGrid.selectedItem.brand;
+						shelf.assetsId = dataGrid.selectedItem.id;
+						shelf.typeId = dataGrid.selectedItem.objectTypeId;
+						shelf.productNo = dataGrid.selectedItem.model;
+						shelf.antennaCode = obj.shelfSeqNo;
+						shelf.uNo = uNumCombox.selectedItem.uNo;
+						shelf.uHoldCount =  dataGrid.selectedItem.uHoldCount;
+						shelf.portCount = dataGrid.selectedItem.portCount;
+						shelf.code = cCode + "-" + shelf.uNo;
+						shelf.type = sType.selectedItem.type;
+						ssRemote.isShelfAnnCodeDuplicate(int(obj.parentEquipmentId),int(obj.shelfSeqNo));
+						break;
+					default:
+						break;
+				}
+			}
+			
+			private function bindEqmt(eqmtId : int):Object{
+				//点击绑定，判断他们的设备类型是否相同，同一个控制器，他有不同的类型，采集器，配线架同理。
+				var data : Object = new Object();
+				data["type1"] = obj.type + "";
+				data["type2"] = obj.type + "";
+				if(obj.type == 'controller'){
+					data["equipmentId"] = eqmtId + "";
+				}else if(obj.type == 'collector'){
+					data["equipmentId"] = eqmtId + "";
+					data["collectorSeqNo"] = obj.collectorSeqNo + "";
+				}else{
+					data["equipmentId"] = eqmtId + "";
+					data["collectorSeqNo"] = obj.collectorSeqNo + "";
+					data["shelfSeqNo"] = obj.shelfSeqNo + "";
+				}
+				data["controllerIp"] = obj.controllerIp + "";
+				if(buildCode.text){
+					data["buildingCode"] = buildCode.text + ""
+				}else{
+					data["buildingCode"] = bCode + "";
+				}
+				data["cabinetCode"] = cCode + "";
+				if(uNumCombox.selectedItem){
+					data["uNo"] = uNumCombox.selectedItem.uNo + "";
+				}else{
+					data["uNo"] = uNo + "";
+				}
+				data["gatewayId"] = obj.gatewayId + "";
+				data["gatewayIp"] = obj.gatewayIp + "";
+				data["gatewayPort"] = obj.gatewayPort + "";
+				data["uHoldCount"] = dataGrid.selectedItem.uHoldCount + "";
+				data["assetsId"] = dataGrid.selectedItem.id + "";
+				data["collectorCabinetId"] = obj.cabinetId + "";
+				return data;
+			}
+			
+			private function addResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				//生成之后 刷新维护图 需展开
+				//添加进入数据库后 进行绑定
+				if(obj.type == "controller"){
+					_maintainTree.parentId = obj.gatewayId;
+				}else if(obj.type == "collector"){
+					_maintainTree.parentId = obj.gatewayId;
+					_maintainTree.parentId1 = obj.parentEquipmentId;
+				}else{
+					_maintainTree.parentId = obj.gatewayId;
+					_maintainTree.parentId1 = obj.controllerId;
+					_maintainTree.parentId2 = obj.collectorId;
+				}
+				remote.bound(bindEqmt(i));	
+			}
+			
+			private function boundResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == -1){
+//					Alert.show("建筑编号错误","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00064"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -2){
+//					Alert.show("建筑内找不到机柜","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00065"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -3){
+//					Alert.show("U层格式不正确","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00066"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -4){
+//					Alert.show("U层已经被占用","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00067"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -5){
+//					Alert.show("只能在未绑定的状态下可以进行绑定操作","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00068"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -6 || i == -7){
+//					Alert.show("绑定失败","提示"); 
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00071"),ResourceManager.getInstance().getString("ViewerStrings","T00001")); 
+				}else if(i == -8){
+//					Alert.show("绑定的类型必须一致","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00069"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -9){
+//					Alert.show("所绑定的配线架和扫描仪不在同一个机柜下","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00070"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}if(i == 1){
+					cancel(0);
+					CommonUtil.startLoading(0,20);
+					timer.reset();
+					timer.start();
+				}
+			}
+			
+			private function dataGridClick(event:MouseEvent):void{
+				if(dataGrid.selectedItem) {
+					general.enabled = true;
+					b2.enabled = true;
+					uHoldCount = dataGrid.selectedItem.uHoldCount;
+					if(cabinetId){
+						getEmptuNo();
+					}
+				}else{
+					general.enabled = false;
+					b2.enabled = false;
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		
+			private function ipContDuplicateResult(event:ResultEvent):void{
+				var flag : Boolean = event.result as Boolean ;
+				
+				var assetsId : int = int(obj.assetsId);
+				if( assetsId != 0){
+					if(assetsId != dataGrid.selectedItem.id){
+//						Alert.show("您所绑定的设备产品类型不相同！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00107"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+				}
+				if(flag){
+//					Alert.show("相同网关下的智能管理主机IP不可相同！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00121"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				bgRemote.addEquipmentToCabinet(controller);
+			}
+			
+			private function codeCollDuplicateResult(event:ResultEvent):void{
+				var flag : Boolean = event.result as Boolean;
+				
+				var assetsId : int = int(obj.assetsId);
+				if( assetsId != 0){
+					if(assetsId != dataGrid.selectedItem.id){
+//						Alert.show("您所绑定的设备产品类型不相同！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00107"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+				}
+				if(flag){
+//					Alert.show("相同网关下的扫描仪序号不可相同！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00122"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				bgRemote.addEquipmentToCabinet(collector);
+			}
+			
+			private function codeShelfDuplicateResult(event:ResultEvent):void{
+				var flag : Boolean = event.result as Boolean;
+				
+				var assetsId : int = int(obj.assetsId);
+				if( assetsId != 0){
+					if(assetsId != dataGrid.selectedItem.id){
+//						Alert.show("您所绑定的设备产品类型不相同！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00107"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+				}
+				if(flag){
+//					Alert.show("同一个扫描仪下的配线架序号不可相同！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00123"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				if(cabinetId != obj.cabinetId){
+//					Alert.show("所绑定的配线架和扫描仪不在同一个机柜下","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00070"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return ;
+				}
+				bgRemote.addEquipmentToCabinet(shelf);
+			}
+			
+		]]>
+	</fx:Script>
+
+	<s:VGroup width="100%" height="100%">
+		<s:Group left="5" right="5" width="100%" height="100%">
+			<s:DataGrid id="dataGrid" width="100%" height="100%" click="dataGridClick(event)">
+				<s:columns>
+					<s:ArrayCollection>
+						<s:GridColumn width="40" dataField="no" headerText="{ResourceManager.getInstance().getString('ViewerStrings','T00021')}"/>
+						<s:GridColumn dataField="name" headerText="{ResourceManager.getInstance().getString('ViewerStrings','C00002')}"/>
+						<s:GridColumn dataField="model" headerText="{ResourceManager.getInstance().getString('ViewerStrings','C00003')}"/>
+					</s:ArrayCollection>
+				</s:columns>
+			</s:DataGrid>
+		</s:Group>
+		
+		<s:BorderContainer id="b2" width="100%" height="30%" backgroundAlpha="0" borderWeight="2" enabled="false">
+			<s:VGroup width="100%" height="100%" verticalAlign="middle" enabled="{b2.enabled}">
+				<s:HGroup width="100%" height="33%" horizontalAlign="left" paddingLeft="20"
+						  verticalAlign="middle">
+					<s:HGroup width="50%" enabled="{b2.enabled}">
+						<s:Label height="20" fontWeight="bold" text="{ResourceManager.getInstance().getString('ViewerStrings','T00244')}" textAlign="left"
+								 verticalAlign="middle"/>
+						<s:TextInput id="buildCode" enabled="false"/>
+					</s:HGroup>
+					
+					<s:HGroup id="shelfGroup" width="50%" visible="false">
+						<s:Label height="20" fontWeight="bold" text="{ResourceManager.getInstance().getString('ViewerStrings','T00178')}" textAlign="left"
+								 verticalAlign="middle" />
+						<s:DropDownList id="sType" labelField="name" dataProvider="{shelfType}"/>
+					</s:HGroup>
+				</s:HGroup>
+				
+				<s:HGroup width="100%" height="33%" horizontalAlign="left" paddingLeft="20"
+						  verticalAlign="middle" enabled="{b2.enabled}">
+					<s:Label height="20" fontWeight="bold" text="{ResourceManager.getInstance().getString('ViewerStrings','T00153')}" textAlign="left"
+							 verticalAlign="middle"/>
+					<s:TextInput id="selParentBt" height="20" editable="false" fontSize="10"
+								 text="{ResourceManager.getInstance().getString('ViewerStrings','I00065')}" click="popUpSelect()"/>
+				</s:HGroup>
+					
+				<s:HGroup width="100%" height="33%" horizontalAlign="left" paddingLeft="20"
+						  verticalAlign="middle" enabled="{b2.enabled}">
+					<s:Label width="60" height="20" fontWeight="bold" text="{ResourceManager.getInstance().getString('ViewerStrings','T00265')}" textAlign="right"
+							 verticalAlign="middle"/>
+					<s:DropDownList id="uNumCombox" height="20" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+				</s:HGroup>
+			</s:VGroup>
+		</s:BorderContainer>
+		
+		<s:HGroup width="100%" height="2%" horizontalAlign="right" verticalAlign="middle">
+			<s:Button id="general" label="{ResourceManager.getInstance().getString('ViewerStrings','T00266')}" click="generalEqmt()" />
+			<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel(1)"/>
+		</s:HGroup>
+	</s:VGroup>
+</s:Group>

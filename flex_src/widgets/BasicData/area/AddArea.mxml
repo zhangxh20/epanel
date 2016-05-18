@@ -1,0 +1,393 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:comboVaidator="widgets.UserSetting.*"
+		 creationComplete="init()" width="100%" height="100%">
+
+	<fx:Declarations>
+		<s:RemoteObject id="asRemote" destination="areaService" fault="onFault(event)">
+			<s:method name="addArea" result="addAreaResult(event)"/>
+			<s:method name="getAreaById" result="getAreaByIdResult(event)"/>
+			<s:method name="modifyArea" result="modifyAreaResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="otsRemote" destination="objectTypeService" fault="onFault(event)">
+			<s:method name="getLCObjectTypes" result="getLCObjectTypesResult(event)"/>
+		</s:RemoteObject>
+	
+		<mx:StringValidator id="v1" property="text" required="true" source="{code}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>	
+		<comboVaidator:ComboValidator id="v2"  property="selectedItem" source="{AreaTypeId}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+		<mx:StringValidator id="v3" property="text" required="true" source="{AreaName}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+	</fx:Declarations>
+	
+	<s:states>
+		<s:State name="add"/>
+		<s:State name="edit"/>
+	</s:states>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.managers.SwitchManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			import widgets.BasicData.building.BuildingViewStack;
+			import widgets.BasicData.entitys.Area;
+			
+			public var buildingViewStack:BuildingViewStack;
+			private var area:Area = new Area();
+			private var validerror1:Array = new Array();
+			private var validerror2:Array = new Array();
+			private var i:int;
+			[Bindable]
+			private var lcObjectTypes:ArrayCollection;
+			
+			private function init():void{
+				otsRemote.getLCObjectTypes();
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				validerror1.push(v1);
+				validerror1.push(v2);
+				validerror2.push(v1);
+				validerror2.push(v2);
+				validerror2.push(v3);
+			}
+			
+			private function refresh(event : AppEvent):void{
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[17] == item){
+						otsRemote.getLCObjectTypes();
+						break ;
+					}
+				}
+			}
+			
+			private function getAreaByIdResult(event:ResultEvent):void {
+				area = event.result as Area;
+				for(var i:int=0;i<lcObjectTypes.length;i++){
+					if(area.typeId == lcObjectTypes.getItemAt(i).id){
+						AreaTypeId.selectedIndex = i;
+						break;
+					}
+				}
+				code.text =  area.code;
+				AreaSeqNo.value = area.seqNo;
+				if(area.layerNo == -1){
+					AreaLayerNo.text = "";
+				}else{
+					AreaLayerNo.text = area.layerNo.toString();
+				}
+				if(area.type == "0"){
+					rb1.selected = true;
+					initPage1();
+					ns.value = Number(area.seqNo);
+					AreaName1.text = area.name.substring(area.name.indexOf(ResourceManager.getInstance().getString("ViewerStrings","T00033")) + 1,area.name.length);
+				}else{
+					rb2.selected = true;
+					initPage2();
+					AreaSeqNo.value  = Number(area.seqNo);
+					AreaName.text = area.name;
+				}
+				AreaMark.text = area.remark;
+				
+			}
+			private function getLCObjectTypesResult(event:ResultEvent):void {
+				lcObjectTypes = event.result as ArrayCollection;
+				AreaTypeId.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				AreaTypeId.errorString = "";
+			}
+			private function addAreaResult(event:ResultEvent):void {
+				i = event.result as int;
+				if(i == 1){
+					cancel();
+					buildingViewStack.allArea.init();
+					var buildingId : int = HashTableManager.instance.get("browseBuildId") as int;
+					var data : Object = {
+						arr : [EventType.REFRESH_ID[1],EventType.REFRESH_ID[9],EventType.REFRESH_ID[12],EventType.REFRESH_ID[24] ],
+						obj : {buildingId : buildingId}
+					};
+					AppEvent.dispatch(EventType.REFRESH,data);
+//					Alert.show("添加成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -1){
+//					Alert.show("名称不可重复，请重新输入!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00052"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("添加失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00093"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			private function modifyAreaResult(event:ResultEvent):void {
+				var i:int = event.result as int;
+				if(i == 1){
+					cancel();
+					buildingViewStack.allArea.init();
+					var buildingId : int = HashTableManager.instance.get("browseBuildId") as int;
+					var data : Object = {
+						arr : [EventType.REFRESH_ID[1],EventType.REFRESH_ID[9],EventType.REFRESH_ID[12] ],
+						obj : {buildingId : buildingId}
+					};
+					AppEvent.dispatch(EventType.REFRESH,data);
+//					Alert.show("修改成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00053"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(i == -1){
+//					Alert.show("名称不可重复，请重新输入!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00052"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("修改失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00094"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			/**
+			 * 添加楼层
+			 * */
+			private function addArea():void {
+				var validErrArray:Array ;
+				if(rb1.selected){
+					validErrArray = Validator.validateAll(validerror1);
+				}
+				if(rb2.selected){
+					validErrArray = Validator.validateAll(validerror2);
+				}
+				var validForm:Boolean = validErrArray.length == 0;	
+				if(validForm){
+					area.buildingId = HashTableManager.instance.get("browseBuildId") as int;
+					if(ns.value.toString() == "NaN"){
+//						Alert.show("楼层输入有误，请重新输入！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00095"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					if(AreaSeqNo.value.toString() == "NaN"){
+//						Alert.show("区域序号输入有误，请重新输入！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00018"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					save();
+					asRemote.addArea(area);
+				}
+			}
+			/**
+			 * 修改楼层
+			 * */
+			public function editArea():void{
+				var validErrArray:Array ;
+				if(rb1.selected){
+					validErrArray = Validator.validateAll(validerror1);
+				}
+				if(rb2.selected){
+					validErrArray = Validator.validateAll(validerror2);
+				}
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(validForm){
+					area.id = HashTableManager.instance.get("areaId") as int;
+					area.buildingId = HashTableManager.instance.get("browseBuildId") as int;
+					if(ns.value.toString() == "NaN"){
+//						Alert.show("楼层输入有误，请重新输入！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00095"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					if(AreaSeqNo.value.toString() == "NaN"){
+//						Alert.show("区域序号输入有误，请重新输入！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00020"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						return ;
+					}
+					save();
+					asRemote.modifyArea(area);
+				}
+			}
+			private function save():void{
+				if(rb1.selected){
+					area.type = "0";
+					if (ns.value < 0){
+						area.name = "B" + ns.value*(-1) + ResourceManager.getInstance().getString("ViewerStrings","T00033") + AreaName1.text;
+					} else {
+						area.name = ns.value + ResourceManager.getInstance().getString("ViewerStrings","T00033") + AreaName1.text;
+					}
+					area.seqNo = ns.value;
+				}
+				if(rb2.selected){
+					area.type = "1";
+					area.name = AreaName.text;
+					area.seqNo = int(AreaSeqNo.value);
+				}
+				area.code = code.text;
+				if(AreaLayerNo.text == ""){
+					area.layerNo = -1;
+				}else{
+					area.layerNo = Number(AreaLayerNo.text);
+				}
+				area.typeId = AreaTypeId.selectedItem.id;
+				area.remark = AreaMark.text;
+				
+			}
+			private function cancel():void{
+				//AreaCode1.text = "";
+				code.text = "";
+				code.errorString = "";
+				AreaLayerNo.text = "";
+				AreaName.text = "";
+				AreaName.errorString = "";
+				AreaTypeId.errorString = "";
+				AreaMark.text = "";
+				AreaName1.text = "";
+				buildingViewStack.selectedChild = buildingViewStack.nav4;
+			}
+			public function getAreaById(areaId:int):void{
+				asRemote.getAreaById(areaId);
+			}
+			
+			private function rbClick():void{
+				if(rb1.selected){
+					initPage1();
+				}
+				if(rb2.selected){
+					initPage2();
+				}
+			}
+		
+			private function initPage1():void{
+				form1.includeInLayout = true;
+				form1.visible = true;
+				form2.includeInLayout = false;
+				form2.visible = false;
+				form3.includeInLayout = false;
+				form3.visible = false;
+				areaName1.includeInLayout = true;
+				areaName1.visible = true;
+			}
+			private function initPage2():void{
+				form2.includeInLayout = true;
+				form2.visible = true;
+				form3.includeInLayout = true;
+				form3.visible = true;
+				form1.includeInLayout = false;
+				form1.visible = false;
+				areaName1.includeInLayout = false;
+				areaName1.visible = false;
+			}
+			
+			private var num:Number = 1;
+			
+			private function numerChange():void{
+				if(ns.value == 0){
+					if( num > ns.value){
+						ns.value = - 1;
+					}else{
+						ns.value = 1;
+					}
+				}
+				num = ns.value;
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			private function checkValueFunction(value:Number):String{
+				var reg : RegExp = /[0-9]/;
+				if (reg.test(value.toString())){
+					return value.toString();
+				}else {
+					return "0";
+				}
+			}
+		]]>
+	</fx:Script>
+	<s:Label id="label" color="yellow" x="0"/>
+	<s:Group left="180" right="10" width="70%" height="100%" >
+		
+		<s:HGroup width="100%" height="100%" horizontalAlign="center" verticalAlign="middle">
+				
+			<s:Form width="100%" height="100%" textAlign="right">
+				<s:FormItem height="15">
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:RadioButton id="rb1" label="{ResourceManager.getInstance().getString('ViewerStrings','T00034')}" width="50%" click="rbClick()" selected="true"/>
+					<s:RadioButton id="rb2" label="{ResourceManager.getInstance().getString('ViewerStrings','T00035')}" width="50%" click="rbClick()"/>
+				</s:FormItem>
+				
+				<s:FormItem id="form1" label="{ResourceManager.getInstance().getString('ViewerStrings','T00036')}" height="26" >
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout>
+					<s:NumericStepper id="ns" width="60" maximum="100" minimum="-10" change="numerChange()" value="1" valueFormatFunction="checkValueFunction"/>
+					<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00033')}" height="26" verticalAlign="middle"/>
+				</s:FormItem>
+				
+				
+				<s:FormItem id="form3" label="{ResourceManager.getInstance().getString('ViewerStrings','T00037')}" height="26" includeInLayout="false" visible="false">
+					<s:NumericStepper id="AreaSeqNo" width="60" maximum="9999" minimum="-9999" valueFormatFunction="checkValueFunction"/>
+				</s:FormItem>
+				
+				<s:FormItem id="form2" label="{ResourceManager.getInstance().getString('ViewerStrings','T00038')}" height="26" required="true" requiredIndicatorSource="assets/images/require.png" includeInLayout="false" visible="false">
+					<s:TextInput id="AreaName" width="150" textAlign="left" maxChars="40"/>
+				</s:FormItem>
+				
+				
+				<s:FormItem id="areaName1" label="{ResourceManager.getInstance().getString('ViewerStrings','T00039')}" height="26">
+					<s:TextInput id="AreaName1" width="150" textAlign="left" maxChars="40"/>	
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00040')}" height="26" required="true" requiredIndicatorSource="assets/images/require.png">
+					<s:DropDownList id="AreaTypeId" width="150" dataProvider="{lcObjectTypes}" labelField="name" textAlign="left" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00041')}" height="26" required="true" requiredIndicatorSource="assets/images/require.png">
+					<s:TextInput id="code" width="150" textAlign="left" maxChars="50" restrict="A-Z a-z"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00042')}" height="26">
+					<s:TextInput id="AreaLayerNo" width="150" enabled="false" textAlign="left" maxChars="10"/>
+				</s:FormItem>
+				
+				<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" height="26">
+					<s:TextInput id="AreaMark" width="150" textAlign="left" maxChars="200"/>	
+				</s:FormItem>
+				
+				<s:FormItem x="220" y="220">
+					<s:layout>
+						<s:HorizontalLayout/>
+					</s:layout> 
+					<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click.add="addArea()" click.edit="editArea()"/>
+					<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00044')}" click="cancel()"/>
+				</s:FormItem>
+			</s:Form>
+		</s:HGroup>
+			
+			
+		
+	</s:Group>
+	
+</s:Group>

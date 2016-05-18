@@ -1,0 +1,259 @@
+<?xml version="1.0" encoding="utf-8"?>
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009"
+				   xmlns:s="library://ns.adobe.com/flex/spark"
+				   xmlns:mx="library://ns.adobe.com/flex/mx"
+				   xmlns:viewer="com.esri.viewer.*"
+				   xmlns:UserGroup="widgets.UserSetting.userGroup.*"
+				   xmlns:User="widgets.UserSetting.user.*" widgetConfigLoaded="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="usRemote"  destination="userService" fault="onFault(event)">
+			<s:method name="modifyUser" result="modifyUserResult(event)" />
+			<s:method name="getUserById" result="getUserByIdResult(event)"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1" property="text" required="true" source="{password}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:StringValidator id="v2" property="text" required="true" source="{modifypas}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+		<mx:StringValidator id="v3" property="text" required="true" source="{addpas}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.esri.viewer.ViewerContainer;
+			import com.gokei.components.EventType;
+			import com.gokei.entitys.User;
+			import com.gokei.entitys.UserInfo;
+			import com.gokei.managers.MD5;
+			
+			import mx.controls.Alert;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			//获取当前登录者
+			private var users:UserInfo = new UserInfo();
+			private var validerror:Array;
+			public var userInfo:UserInfo = ViewerContainer.getInstance().switchManager.userInfo;
+			private var flag:Boolean;
+			private var pas:String;
+			
+			private function init():void{
+				if(userInfo.roleInfo.name == "admin"){
+					this.currentState = 'state1';
+					tab.visible = true;
+				}else{
+					this.currentState = 'state2';
+					group.visible = true;
+					usRemote.getUserById(userInfo.userId);
+					validerror = new Array();
+					validerror.push(v1);
+				}
+				wt1.resizable = false;
+			}
+			
+			/**
+			 * 添加用户
+			 * */
+			public function modifyUser():void{	
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;		
+				if(flag){
+					if(validForm){
+						users.userId = userInfo.userId;
+						users.password = MD5.hash(addpas.text);
+						users.roleId = userInfo.roleId;
+						users.name = userInfo.name;
+						users.department = department.text;
+						users.email = email.text;
+						users.rfid = userInfo.rfid;
+						users.mobId = mobId.text;
+						users.tel = tel.text;
+						users.post = post.text;
+						users.remark = remark.text;
+						usRemote.modifyUser(users);
+					}
+				}
+			}
+			
+			private function modifyUserResult(event:ResultEvent):void{
+				var i:int = event.result as int;	
+				if(i == 1){
+//					Alert.show("操作成功！","提示");				
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00063"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));				
+				}else{
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			private function getUserByIdResult(event:ResultEvent):void{
+				var user:User = event.result as User;
+//				userId.text = user.userId;
+//				用户组
+//				for(var i:int=0;i<allRoles.length;i++){
+//					if(user.roleId == allRoles.getItemAt(i).id){
+//						roleId.selectedIndex = i;
+//						break;
+//					}
+//				}
+				pas = user.password;
+//				name1.text = user.name;
+				department.text = user.department;
+				email.text = user.email;
+//				rfid.text = user.rfid;
+				mobId.text = user.mobId;
+				tel.text = user.tel;
+				post.text = user.post;
+				remark.text = user.remark;
+				
+			}
+			private function cancel():void{
+				password.text = "";
+				modifypas.text = "";
+				addpas.text = "";
+				password.errorString = "";
+				modifypas.errorString = "";
+				addpas.errorString = "";
+				modifypas.text = "";
+				addpas.text = "";
+				AppEvent.dispatch(AppEvent.WIDGET_CLOSE,8);
+			}
+			
+			private function resurePas():void{
+				if(modifypas.text != "" && addpas.text != ""){
+					if(MD5.hash(modifypas.text.valueOf()) != MD5.hash(addpas.text.valueOf())){
+						setTimeout(function():void{
+							modifypas.text = "";
+							addpas.text = "";
+							flag = false;
+//							Alert.show("密码不一致，请重新输入！","提示");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00078"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+						},500);
+					}else{
+						flag = true;
+					}
+				}
+			}
+			
+			private function judgePas():void{
+				if(password.text != ""){
+					if(pas != MD5.hash(password.text.valueOf())){
+						setTimeout(function():void{
+							password.text = "";
+//							Alert.show("原始密码不正确，请重新输入！","提示");
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00079"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+							flag = false;
+						},500);
+					}else{
+						flag = true;
+					}
+				}
+			}
+			
+			private function wt1_openHandler(event:Event):void
+			{
+				setTimeout(function():void{	wt1.resizable = false;},200);
+			}
+			
+			private function wt1_closedHandler(event:Event):void
+			{
+				var data : Object = { arr : [EventType.REFRESH_ID[18], EventType.REFRESH_ID[19]]};
+				AppEvent.dispatch(EventType.REFRESH,data);
+			}
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+
+	<viewer:states>
+		<s:State name="state1"/>
+		<s:State name="state2"/>
+	</viewer:states>
+	
+	<viewer:WidgetTemplate id="wt1" fontFamily="{ResourceManager.getInstance().getString('ViewerStrings','Font002')}" width="670" height="360" open="wt1_openHandler(event)" closed="wt1_closedHandler(event)">
+			<mx:TabNavigator id="tab" width="620" height="300" backgroundAlpha="0.0" includeIn="state1" includeInLayout="false" visible="false">
+				<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00217')}" >
+					<UserGroup:UserGroupViewStack id="userGroup" width="100%" height="100%"/>
+				</s:NavigatorContent>
+				<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00270')}" >
+					<User:UserViewStack id="user" width="100%" height="100%"/>
+				</s:NavigatorContent>
+			</mx:TabNavigator>
+		
+			<s:Group id="group" includeIn="state2"  width="100%" height="100%" left="10" right="10" top="10" bottom="10" visible="false">
+				<s:Rect width="100%" height="100%" radiusX="5" radiusY="5">
+					<s:stroke>
+						<s:SolidColorStroke color="#696969" weight="2" />
+					</s:stroke>
+				</s:Rect>
+				<s:Label text="{ResourceManager.getInstance().getString('ViewerStrings','T00271')}" color="yellow" width="100" height="20" fontSize="14" paddingLeft="5" paddingTop="2"/>
+				<s:Form x="15" y="20" width="50%" textAlign="right">
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00272')}" required="true" height="35" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput id="password"  displayAsPassword="true" width="150" textAlign="left" focusOut="judgePas()"/>
+					</s:FormItem>
+					
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00273')}" required="true" height="35" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput id="modifypas" displayAsPassword="true" width="150" textAlign="left" focusOut="resurePas()"/>
+					</s:FormItem>
+					
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00274')}" required="true" height="35" requiredIndicatorSource="assets/images/require.png">
+						<s:TextInput id="addpas" displayAsPassword="true" width="150" textAlign="left" focusOut="resurePas()"/>
+					</s:FormItem>
+					
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00275')}"  height="35">
+						<s:TextInput id="department" width="150" textAlign="left" enabled="false"/>
+					</s:FormItem>
+					
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}" height="35">
+						<s:TextInput id="remark" width="150" textAlign="left"/>
+					</s:FormItem>
+			
+				</s:Form>
+				
+				<s:Form x="320" y="20" width="50%" textAlign="right">
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00276')}" height="35">
+						<s:TextInput id="post" width="150" textAlign="left" enabled="false"/>
+					</s:FormItem>
+					
+					<s:FormItem label="E-Mail："  height="35">
+						<s:TextInput id="email" width="150" textAlign="left" enabled="false"/>
+					</s:FormItem>
+					
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00277')}" textAlign="left"  height="35">
+						<s:TextInput id="mobId" width="150" textAlign="left" enabled="false"/>
+					</s:FormItem>
+					
+					<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00278')}" height="35">
+						<s:TextInput id="tel" width="150" textAlign="left" enabled="false"/>
+					</s:FormItem>
+					
+				</s:Form>
+				
+				<s:FormItem width="100%" y="240">
+					<s:layout>
+						<s:HorizontalLayout horizontalAlign.state2="center"/>
+					</s:layout>
+					<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="modifyUser()"/>
+					<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel()"/>
+				</s:FormItem>
+			</s:Group>
+	</viewer:WidgetTemplate>
+
+</viewer:BaseWidget>

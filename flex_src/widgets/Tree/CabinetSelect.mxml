@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<gokei:TitleWindowX xmlns:fx="http://ns.adobe.com/mxml/2009"
+					xmlns:s="library://ns.adobe.com/flex/spark"
+					xmlns:mx="library://ns.adobe.com/flex/mx"
+					xmlns:tree="widgets.Tree.*"
+					xmlns:gokei="com.gokei.components.*"
+					width="320" height="400" close="close()" creationComplete="init()" title="{ResourceManager.getInstance().getString('ViewerStrings','T00146')}">
+	<fx:Declarations>
+		<s:RemoteObject id="remote" destination="treeGraphService" fault="onFault(event)">
+			<s:method name="getCabinetsGraphDataByCompanyId" result="loadTree(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import com.gokei.util.CommonUtil;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			private var xmlList:XMLList;
+			
+			public var isCabinet:Boolean;
+			private var companyId:int;
+		//	public var addShelfInColl:AddShelfInColl ;
+			public var selectType : SelectedType;
+		//	public var number:int;
+			private var xml : XML;
+			private var expand:Boolean;
+			private var newXml: XML;
+			
+			public function init():void {
+				companyId = int(HashTableManager.instance.get("comId"));
+				remote.getCabinetsGraphDataByCompanyId(companyId);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+			}
+			
+			private function loadTree(event:ResultEvent):void {
+				var xmlStr:String = event.result as String;
+				xml = new XML(xmlStr);
+				xmlList = new XMLList(xml);
+				trace(xml);
+				tree.callLater(function():void{
+					tree.selectedIndex = 0;
+					tree.expandItem(tree.selectedItem,true);
+				});
+			}
+			
+			public function expandTree():void{
+				tree.selectedIndex = 0;
+				tree.expandItem(tree.selectedItem,true);
+			}
+			
+			private function refresh(event:AppEvent):void {
+				var arr : Array = event.data.arr as Array;
+				for each(var item : String in arr){
+					if (item == EventType.REFRESH_ID[10]) {
+						remote.getCabinetsGraphDataByCompanyId(companyId);
+						break;
+					}
+				}
+			}
+			
+			private function iconfunc(item:Object):Class {
+				var xml:XML = item as XML;
+				if (xml.@type == "cabinet") {
+					if(xml.@isMain == 0){
+						return TreeImageList.branchCabinetIcon;
+					}else{
+						return TreeImageList.mainCabinetIcon;
+					}
+				} else if(xml.@type == 'building'){
+					return TreeImageList.buildingIcon;
+				}else{
+					return TreeImageList.companyIcon;
+				}
+				return null;
+			}
+			
+			private function treeClick():void {
+				var xml:XML = tree.selectedItem as XML;
+				var obj:Object = new Object();
+				if (xml.@type == "cabinet"){
+//					obj.name = xml.@code + "(U数:" + xml.@uCount + ")";
+					obj.name = xml.@code + ResourceManager.getInstance().getString("ViewerStrings","T00247") + xml.@uCount + ")";
+					obj.id = xml.@ID + "";
+					obj.type = xml.@type + "";
+					//obj.number = number;
+					obj.cabinetCode = xml.@code;
+					obj.buildingCode = xml.parent().@code;
+//					if(addShelfInColl){
+//						addShelfInColl.treeSelect(obj);
+//					}
+					if(selectType){
+						selectType.treeSelect(obj);
+					}
+					close();
+				}
+			}
+			
+			private function labelfunc(item:Object):String {
+				return CommonUtil.labelfunc(item,"net");
+			}
+			
+			protected function close():void{
+				PopUpManager.removePopUp(this);
+			}
+			
+			protected function tbClick():void{
+				if(expand){
+					expand = false;
+//					tb.toolTip = '展开';
+					tb.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00129");
+					tb.source = "assets/images/closeX.png";
+					tree.expandChildrenOf(xml,false);
+					tree.selectedIndex = 0 ;
+					tree.expandItem(tree.selectedItem,true);
+				}else{
+					expand = true;
+					tb.toolTip = ResourceManager.getInstance().getString("ViewerStrings","T00130");
+					tb.source = "assets/images/expand.png";
+					tree.expandChildrenOf(xml,true);
+				}
+			}
+			
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示"); 
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+							Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	<s:Group left="5" right="5" top="3" bottom="3">
+			<s:HGroup width="100%" horizontalAlign="right" verticalAlign="middle" paddingRight="0" y="0">
+				<s:Image id="tb" width="45" toolTip="{ResourceManager.getInstance().getString('ViewerStrings','T00129')}" click="tbClick()" source="assets/images/closeX.png" buttonMode="true"/>
+			</s:HGroup>
+	
+			<tree:AutoSizeTree y="20" id="tree" width="300" height="320" dataProvider="{xmlList}"
+							   doubleClickEnabled="true" dragEnabled="true"
+							   horizontalScrollPolicy="auto" iconFunction="iconfunc"
+							   itemDoubleClick="treeClick()" labelField="@name"
+							   labelFunction="labelfunc" showRoot="false">
+			</tree:AutoSizeTree>
+			<s:Label width="100%" height="5%" fontWeight="bold" text="{ResourceManager.getInstance().getString('ViewerStrings','T00248')}" textAlign="left"
+					 verticalAlign="middle" y="340"/>
+	</s:Group>
+	
+	
+</gokei:TitleWindowX>

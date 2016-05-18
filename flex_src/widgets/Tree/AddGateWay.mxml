@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:TitleWindow xmlns:fx="http://ns.adobe.com/mxml/2009"
+			   xmlns:s="library://ns.adobe.com/flex/spark"
+			   xmlns:mx="library://ns.adobe.com/flex/mx"
+			   width="500" height="120" title="{ResourceManager.getInstance().getString('ViewerStrings','T00231')}" close="clear()" x="300" y="300">
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.managers.PopUpManager;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			private var _comName : String;
+			private var _companyId : int;
+			[Bindable]
+			private var array : ArrayCollection;
+			
+			public function init():void{
+				gsRemote.getNoCompanyIdGWs();
+			}
+			
+			private function clear():void{
+				PopUpManager.removePopUp(this);
+				//companyName.text = "";
+				gatewayId.selectedIndex = -1;
+			}
+			
+			public function set comName(value : String):void{
+				this._comName = value;
+			}
+			public function set companyId(value : int):void{
+				this._companyId = value;
+			}
+			
+			private function getGateWayResult(event:ResultEvent):void{
+				array = event.result as ArrayCollection;
+			}
+			
+			private  function addGateWay():void{
+				if(!gatewayId.selectedItem){
+//					Alert.show("请选择您要添加的网关！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00092"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					return;
+				}
+//				gsRemote.assignGatewayCompanyId(gatewayId.selectedItem.id,_companyId);
+				gsRemote.assignGatewayCompanyId(gatewayId.selectedItem.id,_companyId);
+			}
+			
+			private function addResult(event:ResultEvent):void{
+				if(event.result == 0){
+//					Alert.show("添加失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00015"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("添加成功！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					clear();
+					var data : Object = { arr : [EventType.REFRESH_ID[7]]};
+					AppEvent.dispatch(EventType.REFRESH,data);
+				}
+			}
+			private function onFault(event:FaultEvent):void {
+				var str : String = event.fault.faultString;
+				if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//					Alert.show("请插入加密狗！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'NoAuth'){
+//					Alert.show("没有权限！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else if(str == 'SessionTimeOut'){
+//					Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+						AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+					});
+				}else if (str == 'dataVersionError'){
+//					Alert.show("操作失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+					Alert.show(event.fault.message);
+				}
+			}
+			
+		]]>
+	</fx:Script>
+	
+	<fx:Declarations>
+		<s:RemoteObject id="gsRemote" destination="gatewayService" fault="onFault(event)">
+			<s:method name="getNoCompanyIdGWs" result="getGateWayResult(event)"/>
+			<s:method name="assignGatewayCompanyId" result="addResult(event)"/>
+		</s:RemoteObject>
+	</fx:Declarations>
+	
+	<s:layout>
+		<s:VerticalLayout/>
+	</s:layout>
+	
+	<s:Form width="100%" height="45">
+		<s:layout>
+			<s:HorizontalLayout/>
+		</s:layout>
+		<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','C00004')}">
+			<s:TextInput id="companyName" width="150" text="{_comName}"/>
+		</s:FormItem>
+		
+		<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','C00006')}">
+			<s:DropDownList id="gatewayId" width="150" dataProvider="{array}" labelField="ip"/>
+		</s:FormItem>
+	</s:Form>
+	
+	<s:Form width="100%" height="30">
+		<s:layout>
+			<s:HorizontalLayout horizontalAlign="right"/>
+		</s:layout>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00014')}" click="addGateWay()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="clear()"/>
+	</s:Form>
+</s:TitleWindow>

@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="utf-8"?>
+<s:Group xmlns:fx="http://ns.adobe.com/mxml/2009" 
+		 xmlns:s="library://ns.adobe.com/flex/spark" 
+		 xmlns:mx="library://ns.adobe.com/flex/mx"
+		 xmlns:comboVaidator="widgets.UserSetting.*" width="100%" height="100%" initialize="init()">
+	
+	<fx:Declarations>
+		<s:RemoteObject id="otsRemote" destination="objectTypeService" fault="onFault(event)">
+			<s:method name="getFJObjectTypes" result="getTypeResult(event)"/>
+		</s:RemoteObject>
+		<s:RemoteObject id="roomRemote" destination="roomService" fault="onFault(event)">
+			<s:method name="addRoom" result="addResult(event)"/>
+			<s:method name="getRoomById" result="getRoomByIdResult(event)"/>
+			<s:method name="modifyRoom" result="modifyRoomResult(event)"/>
+		</s:RemoteObject>
+		<mx:StringValidator id="v1" maxLength="20" property="text" required="true" source="{roomName}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>	
+		<comboVaidator:ComboValidator id="v2"  property="selectedItem" source="{typeComboBox}" error="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}" prompt="myCombox"/>
+		<mx:StringValidator id="v3" maxLength="20" property="text" required="true" source="{abbrName}" requiredFieldError="{ResourceManager.getInstance().getString('ViewerStrings','I00050')}"/>
+	</fx:Declarations>
+	
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			
+			import mx.collections.ArrayCollection;
+			import mx.controls.Alert;
+			import mx.events.CloseEvent;
+			import mx.rpc.events.FaultEvent;
+			import mx.rpc.events.ResultEvent;
+			import mx.validators.Validator;
+			import mx.resources.ResourceManager;
+			
+			[Bindable]
+			private var _obj : Object;
+			private var room :Room;
+			private var _roomTree : RoomTree;
+			private var validerror:Array = new Array();
+			[Bindable]
+			private var typeArr : ArrayCollection;
+			private var roomId : int; //房间ID
+			
+			private function init():void{
+				validerror.push(v1);
+				validerror.push(v2);
+				validerror.push(v3);
+				AppEvent.addListener(EventType.REFRESH,refresh);
+				otsRemote.getFJObjectTypes();
+			}
+			
+			//添加 修改 删除 小对象时 页面保持刷新
+			private function refresh(event : AppEvent):void{
+				//调取所有房间的小类型	
+				var arr:Array = event.data.arr as Array;
+				for each ( var item:String in arr) {
+					if (EventType.REFRESH_ID[14] == item){
+						otsRemote.getFJObjectTypes();
+						break ;
+					}
+				}
+			}
+			
+			public function set obj(value : Object):void{
+				this._obj = value ;
+				getRoom();
+			}
+			
+			public function getRoom():void{
+				if(_obj.type == 'room' && _roomTree.btnSelected){
+					roomId = _obj.roomId;
+					roomRemote.getRoomById(roomId);
+				}
+			}
+			
+			public function set roomTree(value : RoomTree):void{
+				this._roomTree = value;
+			}
+			
+			//添加房间
+			private function addRoom():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;	
+				if(validForm){
+					save();
+					roomRemote.addRoom(room);
+				}
+			}
+			
+			//编辑房间
+			private function editRoom():void{
+				var validErrArray:Array = Validator.validateAll(validerror);
+				var validForm:Boolean = validErrArray.length == 0;	
+				if(validForm){
+					save();
+					room.id = roomId;
+					roomRemote.modifyRoom(room);
+				}
+			}
+			
+			private function save():void{
+				room = new Room();
+				room.name = roomName.text;
+				room.abbrName = abbrName.text;
+				room.areaId = _obj.areaId;
+				room.typeId = typeComboBox.selectedItem.id;
+				room.remark = remark.text;
+			}
+			
+			public function cancel(value : int):void{
+				if(value == 0){
+					//只恢复页面的状态				
+					_roomTree.btnSelected = false;
+					_roomTree.removeAll();
+				}
+				roomName.text = "";
+				roomName.errorString = "";
+				abbrName.text = "";
+				abbrName.errorString = "";
+				remark.text = "";
+			}
+			
+			private function getTypeResult(event:ResultEvent):void{
+				typeArr = event.result as ArrayCollection;
+//				typeComboBox.prompt = "请选择";
+				typeComboBox.prompt = ResourceManager.getInstance().getString("ViewerStrings","I00034");
+				typeComboBox.errorString = "";
+			}
+			
+			private function addResult(event:ResultEvent):void
+			{
+				if(int(event.result) == 1){
+//					Alert.show("添加成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00051"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					cancel(0);
+					var obj : Object = { arr : [EventType.REFRESH_ID[9],EventType.REFRESH_ID[12]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+				} else if(int(event.result == -1)){
+//					Alert.show("房间名称相同， 添加失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00059"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("添加失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00093"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			
+			public function getRoomByIdResult(event:ResultEvent):void{
+				room = event.result as Room;
+				roomName.text = room.name;
+				abbrName.text = room.abbrName;
+				for(var i : int = 0 ; i < typeArr.length ; i++){
+					if(room.typeId == typeArr.getItemAt(i).id){
+						typeComboBox.selectedIndex = i ;
+						break ;
+					}
+				}
+				remark.text = room.remark;
+			}
+			
+			private function modifyRoomResult(event:ResultEvent):void{
+				var i:int = event.result as int;
+				if(i == 1){
+					cancel(0);
+					var obj : Object = { arr : [EventType.REFRESH_ID[9],EventType.REFRESH_ID[12]]};
+					AppEvent.dispatch(EventType.REFRESH,obj);
+//					Alert.show("修改成功!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","I00053"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				} else if(int(event.result == -1)){
+//					Alert.show("房间名称相同，修改失败！","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00060"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}else{
+//					Alert.show("修改失败!","提示");
+					Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00094"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+				}
+			}
+			private var alertShow : int = 0 ; //超时 加密狗
+			private function onFault(event:FaultEvent):void {
+				if(alertShow == 0){
+					alertShow = 1;
+					var str : String = event.fault.faultString;
+					if(str == 'LoginSecDogNotFound' || str == 'FilterSecDogNotFound'){
+//						Alert.show("请插入加密狗！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00002"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'NoAuth'){
+//						Alert.show("没有权限！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00003"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else if(str == 'SessionTimeOut'){
+//						Alert.show("登录超时，请重新登录！","提示",Alert.OK,null,function(event : CloseEvent):void{
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00004"),ResourceManager.getInstance().getString("ViewerStrings","T00001"),Alert.OK,null,function(event : CloseEvent):void{
+							AppEvent.dispatch(EventType.USER_LOGOUT,'logout');
+						});
+					}else if (str == 'dataVersionError'){
+//						Alert.show("操作失败！","提示");
+						Alert.show(ResourceManager.getInstance().getString("ViewerStrings","E00005"),ResourceManager.getInstance().getString("ViewerStrings","T00001"));
+					}else{
+						Alert.show(event.fault.message);
+						alertShow = 0 ;
+					}
+				}
+			}
+		]]>
+	</fx:Script>
+	
+	<s:states>
+		<s:State name="add"/>
+		<s:State name="edit"/>
+	</s:states>
+	
+	<s:layout>
+		<s:VerticalLayout horizontalAlign="center"/>
+	</s:layout>
+	<s:BorderContainer width="100%" height="94%" backgroundAlpha="0" borderWeight="2">
+		<s:Form width="50%" height="100%">
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','C00004')}">
+				<s:Label id="companyName" width="150" text="{_obj.companyName}"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','C00005')}">
+				<s:Label id="buildingName" width="150" text="{_obj.buildingName}"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00232')}">
+				<s:Label id="areaName" width="150" text="{_obj.areaName}"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00104')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+				<s:TextInput id="roomName" width="150" maxChars="50"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00352')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+				<s:TextInput id="abbrName" width="150" maxChars="50"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00040')}" required="true" requiredIndicatorSource="assets/images/require.png" >
+				<s:DropDownList id="typeComboBox" width="150" dataProvider="{typeArr}" labelField="name" prompt="{ResourceManager.getInstance().getString('ViewerStrings','I00034')}"/>
+			</s:FormItem>
+			
+			<s:FormItem label="{ResourceManager.getInstance().getString('ViewerStrings','T00043')}">
+				<s:TextInput id="remark" width="150" maxChars="50"/>
+			</s:FormItem>
+		</s:Form>
+
+	</s:BorderContainer>
+	
+	<s:HGroup width="100%" height="6%" horizontalAlign="right" verticalAlign="middle">
+		<s:Button label.add="{ResourceManager.getInstance().getString('ViewerStrings','T00214')}" label.edit="{ResourceManager.getInstance().getString('ViewerStrings','T00233')}" click.add="addRoom()" click.edit="editRoom()"/>
+		<s:Button label="{ResourceManager.getInstance().getString('ViewerStrings','T00025')}" click="cancel(0)"/>
+	</s:HGroup>
+</s:Group>

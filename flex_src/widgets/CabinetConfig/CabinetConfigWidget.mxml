@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+///////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2013 GOKEI. All Rights Reserved.
+//
+// 设备配置
+
+// @Author zhang
+// @Version v1.0
+// @Date 2013-01
+///////////////////////////////////////////////////////////////////////////
+-->
+<viewer:BaseWidget xmlns:fx="http://ns.adobe.com/mxml/2009" 
+				   xmlns:s="library://ns.adobe.com/flex/spark" 
+				   xmlns:mx="library://ns.adobe.com/flex/mx" 
+				   xmlns:viewer="com.esri.viewer.*" 
+				   xmlns:gokei="widgets.CabinetConfig.*" 
+				   layout="absolute" creationComplete="init()" widgetConfigLoaded="configLoaded()">
+	<fx:Declarations>
+		
+	</fx:Declarations>
+	<fx:Script>
+		<![CDATA[
+			import com.esri.viewer.AppEvent;
+			import com.gokei.components.EventType;
+			import com.gokei.managers.HashTableManager;
+			import mx.resources.ResourceManager;
+			
+			import flash.utils.setTimeout;
+			
+			private function init():void {
+				AppEvent.addListener(EventType.CONFIG_SEND,configSend);
+			}
+			
+			private function configLoaded():void {
+				var companyId:int = configXML.company;
+				HashTableManager.instance.put("companyId",companyId);
+			}
+			
+			private function configSend(event:AppEvent):void {
+				if (event.data.index == 0) {
+					tab.selectedIndex = 0
+					edit.configSend(event.data);
+				} else {
+					tab.selectedIndex = 1;
+					setTimeout(function():void {
+						wiring.configSend(event.data);
+					},500);
+				}
+			}
+			
+			private function onClose():void {
+				//edit.clear();
+				//if (wiring)wiring.clear();
+			}
+			
+		]]>
+	</fx:Script>
+	<viewer:WidgetTemplate id="wt" width="1280" height="600" closed="onClose()">
+		<mx:TabNavigator id="tab" width="100%" height="100%" backgroundAlpha="0">
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00073')}">
+				<gokei:CabinetEdit id="edit" />
+			</s:NavigatorContent>
+			<s:NavigatorContent label="{ResourceManager.getInstance().getString('ViewerStrings','T00074')}">
+				<gokei:CabinetWiring id="wiring" />
+			</s:NavigatorContent>
+		</mx:TabNavigator>
+	</viewer:WidgetTemplate>
+</viewer:BaseWidget>
